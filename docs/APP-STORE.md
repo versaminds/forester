@@ -43,12 +43,20 @@ details**:
    "Forester App Store" › Download. Keep the `.provisionprofile` file; the build
    script takes its path.
 
-## 3. The demo directory for App Review
+## 3. A directory for App Review
 
 Reviewers must be able to use the app, and Forester needs a directory to
-connect to. `demo-server/` runs the test directory's made-up company (about
-1,650 people, groups and computers) on OpenLDAP, behind a Let's Encrypt
-certificate, so reviewers connect over LDAPS without a certificate prompt.
+connect to. Forum Systems has run a public, read-only OpenLDAP test server
+for years, `ldap.forumsys.com`, and the review notes below send reviewers
+there: plain LDAP on port 389, signed in as `cn=read-only-admin,dc=example,dc=com`
+with the password `password`, about twenty people and groups. Nothing of
+ours has to stay up for it; `scripts/check-release.sh` checks that it answers.
+
+It cannot show editing, TLS or Active Directory. Should App Review ask to see
+those, `demo-server/` runs a directory of our own instead: the test
+directory's made-up company (about 1,650 people, groups and computers) on
+OpenLDAP behind a Let's Encrypt certificate, with an account that may change
+entries in one OU.
 
 1. Create a small Linux machine: Hetzner Cloud CX22 (2 vCPU, 4 GB, EU, about
    4 euros a month) with **Debian 13** and your SSH key is plenty. In its
@@ -78,8 +86,10 @@ certificate, so reviewers connect over LDAPS without a certificate prompt.
 The review account reads everything and may change entries only in
 `OU=Playground,DC=corp,DC=example`; the directory is rebuilt every night at
 04:00 UTC and on every restart. Signing in without TLS is refused. Keep the
-machine running for as long as the app is in the store: every update is
-reviewed again.
+machine running for as long as the review notes name it: every update is
+reviewed again. The review notes then name host `demo.forester.versaminds.live`,
+LDAPS, the user `CN=App Review,CN=Users,DC=corp,DC=example` and the password
+`setup.sh` printed.
 
 ## 4. The website
 
@@ -101,7 +111,7 @@ App Review may open the marketing URL, so make it public first or expect that
 question.
 
 `scripts/check-release.sh` checks all of this from outside, with the
-certificates, the App Store build and the demo directory, and lists what is
+certificates, the App Store build and the review directory, and lists what is
 still to do.
 
 ## 5. Build and upload
@@ -200,21 +210,21 @@ buttons) before uploading. The terminal needs the Screen Recording permission.
 > Free, with every line of its source code public. Made by VersaMinds.
 
 **App Review Information**: your name, phone number and email; **Sign-in
-required**: off (Forester has no account; the demo directory is in the notes).
+required**: off (Forester has no account; the test server's sign-in is in the notes).
 
-**Notes** (fill in the password setup.sh printed):
+**Notes**:
 
-> Forester is a client for LDAP directory servers, such as Microsoft Active Directory, that organisations run on their own networks. To review it, please connect to our demo directory, which holds a made-up company:
+> Forester is a client for LDAP directory servers, such as Microsoft Active Directory, that organisations run on their own networks. To review it, please connect to the public LDAP test server that Forum Systems runs for this purpose:
 >
 > 1. Click + at the bottom of the sidebar (or File › New Connection).
-> 2. Host: demo.forester.versaminds.live
-> 3. Security: LDAPS (the port becomes 636).
+> 2. Host: ldap.forumsys.com
+> 3. Security: None (plain LDAP), port 389. The test server offers no TLS, so Forester warns that the connection is unencrypted.
 > 4. Sign in: Name and password.
->    User: CN=App Review,CN=Users,DC=corp,DC=example
->    Password: (the review password)
+>    User: cn=read-only-admin,dc=example,dc=com
+>    Password: password
 > 5. Click Add, then Connect.
 >
-> Every connection is read-only by design until the person allows changes. To try editing, click Read-only in the toolbar. The review account may change entries in the Playground OU (Corp Example › Playground): edit, disable or reset the password of the user Try Editing Me there, or create new entries. Everything is put back every night. Kerberos sign-in needs an organisation's own Kerberos realm and cannot be tried with the demo directory.
+> The directory holds a few people (such as uid=einstein) and groups (such as ou=scientists). Every connection in Forester is read-only by design until the person allows changes with the Read-only button in the toolbar; this test server is read-only itself, so a change sent to it is refused with the server's own message. Active Directory features and Kerberos sign-in need an organisation's own domain and cannot be tried here.
 >
 > Forester collects no data and has no account. Its source code is public under the PolyForm Shield License; VersaMinds holds the copyright to all of it.
 >

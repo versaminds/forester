@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: LicenseRef-PolyForm-Shield-1.0.0
 # Copyright © 2026 VersaMinds
 # Checks what a Mac App Store submission needs, from the repository to the
-# live website and the demo directory App Review signs in to, and names
+# live website and the directory App Review signs in to, and names
 # everything still missing:
 #
 #   scripts/check-release.sh
@@ -19,7 +19,7 @@ missing() { print -r -- "TODO  $1"; problems=$((problems + 1)); }
 check() { if eval "$2" >/dev/null 2>&1; then ok "$1"; else missing "${3:-$1}"; fi; }
 
 SITE=https://forester.versaminds.live
-DEMO=demo.forester.versaminds.live
+REVIEW_HOST=ldap.forumsys.com
 PLIST="$ROOT/Resources/Info.plist"
 key() { /usr/libexec/PlistBuddy -c "Print :$1" "$PLIST" 2>/dev/null; }
 
@@ -58,11 +58,10 @@ done
 check "the Download buttons lead to Forester on the Mac App Store" "! grep -q APPLE_ID site/_redirects" \
   "site/_redirects still has the placeholder: put Forester's Apple ID from App Store Connect in it"
 
-print "\nThe demo directory App Review signs in to"
-check "$DEMO is in DNS" "[[ -n \$(dig +short $DEMO) ]]" "$DEMO is not in DNS yet (docs/APP-STORE.md step 3)"
-check "it answers LDAPS with a certificate this Mac trusts" \
-  "echo | openssl s_client -connect $DEMO:636 -servername $DEMO -verify_hostname $DEMO -verify_return_error" \
-  "$DEMO does not answer LDAPS with a trusted certificate yet: run demo-server/setup.sh on the server, then demo-server/check.sh"
+print "\nThe directory App Review signs in to (docs/APP-STORE.md step 3)"
+check "$REVIEW_HOST answers and lets the review account read" \
+  "ldapsearch -x -o nettimeout=10 -H ldap://$REVIEW_HOST:389 -D cn=read-only-admin,dc=example,dc=com -w password -b dc=example,dc=com -s one -LLL dn | grep -q '^dn: uid='" \
+  "$REVIEW_HOST does not answer: name the demo directory of our own in the review notes instead (docs/APP-STORE.md step 3)"
 
 print
 if (( problems == 0 )); then

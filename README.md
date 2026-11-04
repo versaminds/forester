@@ -256,7 +256,7 @@ Sources/Forester/       the app (SwiftUI, with an NSOutlineView for the tree)
   Support/              About, updates, export, and the self-driving checks
 Tests/LDAPKitTests/     unit tests and live-server integration tests
 TestDirectory/          the local test server, the Samba domain controller and a sample LDIF
-demo-server/            the demo directory App Review connects to
+demo-server/            a directory of our own for App Review, should it ask for one
 scripts/                app bundle, disk image, App Store package, icon, website images, checks
 site/                   the website, forester.versaminds.live (Cloudflare Pages, wrangler.toml)
 docs/                   releasing (DISTRIBUTION.md), the App Store (APP-STORE.md),

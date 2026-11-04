@@ -254,7 +254,7 @@ Homebrew users get updates with `brew upgrade` as well.
 ## 4. The Mac App Store
 
 [APP-STORE.md](APP-STORE.md) has all of it: the account, certificates and
-profile, the demo directory App Review connects to, the build
+profile, the directory App Review connects to, the build
 (`scripts/make-appstore.sh`), the store listing's text and the review notes.
 
 ---
