@@ -215,7 +215,7 @@ A debug build can also drive itself: through every screen, every sheet in light
 and dark mode, and a session of real clicks and typing that checks each change
 on the server. TESTING.md step 5 has the command, and `scripts/test-all.sh`
 runs everything but the AD checks in one go, as GitHub Actions does on every
-push. Releases are made every two weeks by GitHub Actions, up to App Review:
+push. Releases are made every month by GitHub Actions, up to App Review:
 docs/DISTRIBUTION.md, step 5.
 
 ## Development

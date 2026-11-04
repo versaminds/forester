@@ -108,7 +108,7 @@ and the Homebrew cask to its releases, so:
    Homebrew all get "not found" for everyone but its members.
 2. Tag the release and push the tag: `git tag -a v1.0.0 -m "Forester 1.0.0"`,
    then `git push origin v1.0.0`. The tag must match `VERSION`, and be
-   annotated: the release workflow counts two weeks from its date.
+   annotated: the release workflow counts four weeks from its date.
 3. Publish it with the disk image attached under exactly the name
    `Forester.dmg`: on GitHub, Releases › Draft a new release › the tag ›
    attach `build/Forester.dmg` › Publish. Or with the GitHub CLI
@@ -259,16 +259,16 @@ profile, the demo directory App Review connects to, the build
 
 ---
 
-## 5. Releases every two weeks
+## 5. Releases every month
 
 After the first release, GitHub Actions keeps Forester current and releases
-it every other week. What runs, all on GitHub's macOS runners:
+it once a month. What runs, all on GitHub's macOS runners:
 
 | Workflow | When | What it does |
 |---|---|---|
 | Tests (`ci.yml`) | every push to main and pull request | `scripts/test-all.sh`: unit and integration tests, release builds of both variants, the app driving itself, the App Store variant in its sandbox |
 | Weekly (`weekly.yml`) | Mondays, 05:00 UTC | every test of main with the big directory; a failure opens an issue. A newer Sparkle is tested and proposed, and merged when every test passes and the major version is the same |
-| Release (`release.yml`) | Tuesdays, 06:00 UTC | when the last release is two weeks old and the app changed: every test, the version raised (1.1.0, 1.2.0, …), the App Store package uploaded to App Store Connect, the DMG built, the tag pushed and a GitHub release drafted |
+| Release (`release.yml`) | Tuesdays, 06:00 UTC | when the last release is four weeks old and the app changed: every test, the version raised (1.1.0, 1.2.0, …), the App Store package uploaded to App Store Connect, the DMG built, the tag pushed and a GitHub release drafted |
 | Publish (`publish.yml`) | when you publish a release | the update feed, the website and the Homebrew cask |
 | Website (`site.yml`) | a push to main that touches `site/` | deploys the website |
 

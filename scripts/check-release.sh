@@ -52,7 +52,7 @@ check "a Mac Installer Distribution certificate" "security find-identity -v 2>/d
 
 print "\nThe website (App Store Connect needs the privacy and support pages to load)"
 for page in "" privacy.html support.html terms.html legal.html; do
-  check "$SITE/$page loads" "[[ \$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 $SITE/$page) == 200 ]]" \
+  check "$SITE/$page loads" "[[ \$(curl -sL -o /dev/null -w '%{http_code}' --max-time 10 $SITE/$page) == 200 ]]" \
     "$SITE/$page does not load yet: deploy site/ to Cloudflare Pages (docs/DISTRIBUTION.md)"
 done
 check "the Download buttons lead to Forester on the Mac App Store" "! grep -q APPLE_ID site/_redirects" \

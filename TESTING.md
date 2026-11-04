@@ -16,8 +16,8 @@ Then, when you have one, [an Active Directory domain controller](#6-against-an-a
 `scripts/test-all.sh` runs steps 1, 3 and 5 in a row, with the release builds
 and the App Store variant in its sandbox, as CI does on every push
 (`.github/workflows/ci.yml`); `--performance` adds the big-directory part.
-Each Monday CI runs it all, with a newer Sparkle when there is one, and every
-other Tuesday it makes a release (docs/DISTRIBUTION.md, step 5).
+Each Monday CI runs it all, with a newer Sparkle when there is one, and once
+a month, on a Tuesday, it makes a release (docs/DISTRIBUTION.md, step 5).
 
 ## What you need
 

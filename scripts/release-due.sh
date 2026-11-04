@@ -5,9 +5,9 @@
 #
 #   scripts/release-due.sh [patch|minor|major] [--force]
 #
-# Forester is released every two weeks: a release is due when the last one
-# (the newest v* tag) is at least FORESTER_RELEASE_DAYS old (13, so a weekly
-# schedule that runs a little early still counts two weeks) and the app has
+# Forester is released once a month: a release is due when the last one
+# (the newest v* tag) is at least FORESTER_RELEASE_DAYS old (27, so the
+# weekly schedule makes it the first Tuesday four weeks on) and the app has
 # changed since: its code, resources or dependencies, not only the website or
 # the documentation. --force skips the wait, not the need for a change.
 # The version is the last one raised by the part asked for, minor by default:
@@ -29,7 +29,7 @@ for argument in "$@"; do
     *) print -u2 "usage: scripts/release-due.sh [patch|minor|major] [--force]"; exit 2 ;;
   esac
 done
-DAYS=${FORESTER_RELEASE_DAYS:-13}
+DAYS=${FORESTER_RELEASE_DAYS:-27}
 
 report() {
   local lines=("due=$1" "reason=$2" "last=${LAST:-}" "version=${NEXT:-}")

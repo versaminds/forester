@@ -2,9 +2,9 @@
 # Copyright © 2026 VersaMinds
 name: Release
 
-# A release every two weeks, made up to the point where a person looks:
+# A release once a month, made up to the point where a person looks:
 #
-# 1. Due? (scripts/release-due.sh) Two weeks since the last v* tag, and the
+# 1. Due? (scripts/release-due.sh) Four weeks since the last v* tag, and the
 #    app itself changed since. Checked every Tuesday morning, so a release
 #    follows the Monday's weekly check; run it by hand for a fix in between
 #    (Actions > Release > Run workflow, a patch, "force").
@@ -22,7 +22,7 @@ name: Release
 # updates the Homebrew cask (publish.yml).
 #
 # The secrets it needs are listed in scripts/ci/signing.sh and in
-# docs/DISTRIBUTION.md ("Releases every two weeks"). Without them it stops
+# docs/DISTRIBUTION.md ("Releases every month"). Without them it stops
 # before changing anything.
 
 on:
@@ -36,7 +36,7 @@ on:
         options: [minor, patch, major]
         default: minor
       force:
-        description: Release now, without waiting two weeks since the last
+        description: Release now, without waiting four weeks since the last
         type: boolean
         default: false
 
@@ -113,7 +113,7 @@ jobs:
         run: |
           scripts/ci/signing.sh
           if ! grep -qx 'appstore=true' "$GITHUB_OUTPUT"; then
-            echo "::error::The App Store package cannot be signed and uploaded with the secrets set; nothing was changed. See docs/DISTRIBUTION.md, \"Releases every two weeks\"."
+            echo "::error::The App Store package cannot be signed and uploaded with the secrets set; nothing was changed. See docs/DISTRIBUTION.md, \"Releases every month\"."
             exit 1
           fi
 
