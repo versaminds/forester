@@ -1,0 +1,16 @@
+# SPDX-License-Identifier: LicenseRef-PolyForm-Shield-1.0.0
+# Copyright © 2026 VersaMinds
+# The demo directory for App Review: OpenLDAP with the test directory's data,
+# rebuilt from scratch every time the container starts. Built from the
+# repository's root:  podman build -f demo-server/Containerfile -t forester-demo .
+FROM docker.io/library/debian:trixie-slim
+
+RUN apt-get update \
+ && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends slapd ldap-utils python3 ca-certificates \
+ && rm -rf /var/lib/apt/lists/* /etc/ldap/slapd.d /var/lib/ldap/*
+
+COPY TestDirectory/generate_ldif.py TestDirectory/adtest.schema /opt/forester/
+COPY demo-server/entrypoint.sh demo-server/builtins.schema /opt/forester/
+
+EXPOSE 389 636
+ENTRYPOINT ["/opt/forester/entrypoint.sh"]

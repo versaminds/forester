@@ -1,0 +1,9 @@
+# SPDX-License-Identifier: LicenseRef-PolyForm-Shield-1.0.0
+# Copyright © 2026 VersaMinds
+# An Active Directory domain controller for testing Forester: Samba's AD DC,
+# provisioned as corp.example on first start. See ../start-ad.sh.
+FROM docker.io/library/alpine:3.24
+RUN apk add --no-cache samba-dc samba-common-tools ldb-tools tdb
+COPY entrypoint.sh /usr/local/bin/entrypoint.sh
+EXPOSE 389 636
+ENTRYPOINT ["/bin/sh", "/usr/local/bin/entrypoint.sh"]

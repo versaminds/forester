@@ -1,0 +1,8 @@
+# SPDX-License-Identifier: LicenseRef-PolyForm-Shield-1.0.0
+# Copyright © 2026 VersaMinds
+# forester.versaminds.live on Cloudflare Pages: the static site in site/, nothing to
+# build; its headers are site/_headers. Downloads come from GitHub Releases.
+#   wrangler pages deploy
+name = "forester"
+pages_build_output_dir = "site"
+compatibility_date = "2026-10-01"

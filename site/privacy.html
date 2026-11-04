@@ -1,0 +1,106 @@
+<!doctype html>
+<!-- SPDX-License-Identifier: LicenseRef-PolyForm-Shield-1.0.0 · Copyright © 2026 VersaMinds -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Privacy · Forester</title>
+<meta name="description" content="Forester collects no data. What the app and this website store, where, and your rights.">
+<meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0a0e15" media="(prefers-color-scheme: dark)">
+<link rel="canonical" href="https://forester.versaminds.live/privacy.html">
+<link rel="icon" type="image/png" sizes="64x64" href="img/favicon-64.png">
+<link rel="apple-touch-icon" href="img/apple-touch-icon.png">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+
+<svg class="sprite" aria-hidden="true" focusable="false">
+  <defs>
+    <symbol id="i-coffee" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 9.5h11v5a4.5 4.5 0 01-4.5 4.5h-2a4.5 4.5 0 01-4.5-4.5v-5z"/><path d="M15.5 11h1.25a2.25 2.25 0 010 4.5H15.5"/><path d="M8 3.5c-.7.9-.7 2 0 3M11.5 3.5c-.7.9-.7 2 0 3"/></g></symbol>
+  </defs>
+</svg>
+
+<header class="site-header">
+  <div class="wrap">
+    <a class="brand" href="index.html"><img src="img/icon-64.png" alt="" width="30" height="30">Forester</a>
+    <nav class="nav" aria-label="Sections">
+      <a href="index.html#features">Features</a>
+      <a href="index.html#active-directory">Active Directory</a>
+      <a href="index.html#privacy">Privacy</a>
+      <a href="index.html#source-code">Source code</a>
+      <a href="index.html#faq">FAQ</a>
+    </nav>
+    <a class="btn btn-primary" href="/app-store">Download</a>
+  </div>
+</header>
+
+<main id="main" class="page">
+  <h1>Privacy</h1>
+  <p class="updated">Last updated 4 November 2026</p>
+
+  <p>The short version: Forester collects nothing about you or your directory. It has no account, no analytics and no crash reporting, and it sends nothing to VersaMinds.</p>
+
+  <h2>Who is responsible</h2>
+  <p>Forester and this website are made by VersaMinds BV, which is the controller for the little personal data this policy describes:</p>
+  <dl>
+    <dt>Name</dt><dd>VersaMinds BV, a private limited company under Belgian law</dd>
+    <dt>Registered office</dt><dd>Petrus Van Bavegemstraat 17, 9200 Dendermonde, Belgium</dd>
+    <dt>Enterprise number</dt><dd>0804.360.325 (Crossroads Bank for Enterprises)</dd>
+    <dt>VAT number</dt><dd>BE 0804.360.325</dd>
+    <dt>Email</dt><dd><a href="mailto:privacy@versaminds.live">privacy@versaminds.live</a></dd>
+  </dl>
+
+  <h2>The app</h2>
+  <p>Forester connects only to the directory servers you add, and to the other domain controllers of that domain when you ask for an account's status on each. What it reads from them is shown on your Mac and is not sent anywhere else. VersaMinds never receives it.</p>
+  <ul>
+    <li><strong>Connections</strong> (server, port, sign-in name and options) are saved in a file on your Mac. If you turn on "Keep connections in iCloud Drive" in a copy from outside the Mac App Store, the file is kept in your own iCloud Drive instead, so it appears on your other Macs. VersaMinds cannot read it. The Mac App Store version keeps them on your Mac.</li>
+    <li><strong>Passwords</strong> are saved only in the macOS keychain, while "Remember the password in the keychain" is on (it is, unless you turn it off), and only for the server they were saved for. They are never included when you export connections.</li>
+    <li><strong>Kerberos</strong>: when you sign in with a Kerberos ticket, Forester uses the ticket macOS already holds. It never sees or stores a password for it.</li>
+    <li><strong>Files you export</strong> (LDIF, CSV, connection files and import logs) are written only where you choose to save them.</li>
+    <li><strong>Diagnostics</strong>: Help › Copy Diagnostics copies a summary to your clipboard, without host names, user names or passwords. It goes nowhere unless you paste it somewhere yourself.</li>
+    <li><strong>Updates</strong>: the Mac App Store version is updated by the App Store and checks nothing itself. A copy from outside the App Store reads the list of releases on this website (forester.versaminds.live/updates/) when you choose Check for Updates, or once a day if you say yes when it asks, and downloads a new version from GitHub. Like any request, these show Cloudflare and GitHub your IP address and Forester's version; nothing else is sent, and every update is checked against VersaMinds' signature before it is installed.</li>
+    <li><strong>Links in the Help menu</strong> open this website, versaminds.live and the licence on polyformproject.org in your web browser.</li>
+  </ul>
+  <p>Forester asks for no access to your contacts, photos, location, camera or microphone.</p>
+
+  <h2>This website</h2>
+  <p>This website sets no cookies, keeps nothing in your browser, runs no scripts and loads nothing from other companies: no analytics, no fonts, no tracking pixels. There is no cookie banner because there is nothing to agree to.</p>
+  <p>It is hosted by Cloudflare, which acts as our processor. Like every web server, Cloudflare records technical details of each request (your IP address, browser, the page asked for and the time) to deliver the site and protect it from abuse. That is our legitimate interest in running a website safely (GDPR Art. 6(1)(f)). The records are kept for a short time set by Cloudflare and VersaMinds does not use them to identify or profile visitors. Cloudflare is a United States company; its data processing agreement covers that transfer with the European Commission's Standard Contractual Clauses.</p>
+
+  <h2>If you email us</h2>
+  <p>We receive what you write and your email address, and use them only to answer you and to fix what you report (Art. 6(1)(f), or 6(1)(b) if you ask about a contract). We keep the conversation as long as it is needed to help you and for up to 24 months afterwards, so a follow-up is not a cold start. Ask us to delete it sooner and we will.</p>
+
+  <h2>The Mac App Store</h2>
+  <p>If you get Forester from the Mac App Store, Apple handles the download, updates and your Apple Account under its own privacy policy. Apple may share download counts with us and, if you agree to share them with developers, crash reports. VersaMinds receives nothing else, and nothing about you or your directory.</p>
+
+  <h2>GitHub</h2>
+  <p>The source code, and Forester's downloads outside the Mac App Store, are hosted on GitHub. When you download from there or open an issue there, GitHub is the controller and its own privacy statement applies. Issues are public: leave names, addresses and anything else from your directory out of them.</p>
+
+  <h2>Your rights</h2>
+  <p>You can ask for a copy of what we hold about you, ask us to correct or delete it, restrict or object to what we do with it, and ask for it in a portable format. Email <a href="mailto:privacy@versaminds.live">privacy@versaminds.live</a> and we will answer within one month, normally much sooner.</p>
+  <p>You also have the right to complain to a data protection authority. For VersaMinds that is the Belgian Data Protection Authority (Gegevensbeschermingsautoriteit / Autorité de protection des données), <a href="https://www.dataprotectionauthority.be">dataprotectionauthority.be</a>. We would appreciate the chance to put it right first.</p>
+
+  <h2>Changes</h2>
+  <p>If this policy changes, the new version is posted on this page with a new date.</p>
+</main>
+
+<footer class="site-footer">
+  <div class="wrap">
+    <div class="maker"><p>Made by <a href="https://www.versaminds.live">VersaMinds</a>, the company behind Stackbridge and <a href="https://wayfinder.versaminds.live">Wayfinder</a>. © 2026 VersaMinds BV.</p>
+      <p class="legal">VersaMinds BV · Petrus Van Bavegemstraat 17, 9200 Dendermonde, Belgium · Enterprise and VAT number BE 0804.360.325</p></div>
+    <nav aria-label="Footer">
+      <a href="support.html">Support</a>
+      <a href="privacy.html">Privacy</a>
+      <a href="terms.html">Terms</a>
+      <a href="legal.html">Legal notice</a>
+      <a href="https://polyformproject.org/licenses/shield/1.0.0">Licence</a>
+      <a href="https://github.com/versaminds/forester">GitHub</a>
+      <a href="https://www.versaminds.live">versaminds.live</a>
+      <a class="coffee-link" href="https://buymeacoffee.com/lennertmertens"><svg aria-hidden="true"><use href="#i-coffee"/></svg>Buy me a coffee</a>
+    </nav>
+  </div>
+</footer>
+</body>
+</html>

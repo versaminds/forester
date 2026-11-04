@@ -1,0 +1,17 @@
+# SPDX-License-Identifier: LicenseRef-PolyForm-Shield-1.0.0
+# Copyright © 2026 VersaMinds
+# The site runs no scripts and loads nothing from elsewhere; the policy says so.
+/*
+  Content-Security-Policy: default-src 'none'; img-src 'self' data:; style-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'
+  Referrer-Policy: strict-origin-when-cross-origin
+  X-Content-Type-Options: nosniff
+  Permissions-Policy: camera=(), microphone=(), geolocation=(), interest-cohort=()
+  Strict-Transport-Security: max-age=31536000
+
+/img/*
+  Cache-Control: public, max-age=86400
+
+# Read by the app's updater: a new release shows within minutes.
+/updates/*
+  Cache-Control: public, max-age=300
+  Content-Type: application/xml; charset=utf-8

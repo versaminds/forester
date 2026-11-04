@@ -1,0 +1,179 @@
+# SPDX-License-Identifier: LicenseRef-PolyForm-Shield-1.0.0
+# Copyright © 2026 VersaMinds
+name: Release
+
+# A release every two weeks, made up to the point where a person looks:
+#
+# 1. Due? (scripts/release-due.sh) Two weeks since the last v* tag, and the
+#    app itself changed since. Checked every Tuesday morning, so a release
+#    follows the Monday's weekly check; run it by hand for a fix in between
+#    (Actions > Release > Run workflow, a patch, "force").
+# 2. Every test, the big directory included, on the commit to be released.
+# 3. VERSION raised (minor for a scheduled release), the App Store package
+#    built, signed and uploaded to App Store Connect, where it appears under
+#    TestFlight once Apple has processed it. With the download's secrets too,
+#    the signed, notarized DMG and its entry for the update feed.
+# 4. The commit and its tag pushed, and a draft GitHub release with the
+#    notes, the DMG, the Homebrew cask and the debug symbols.
+#
+# What stays with a person: in App Store Connect, add the build to the new
+# version and press Submit for Review; on GitHub, read the draft and publish
+# it, which puts the release in the update feed, deploys the website and
+# updates the Homebrew cask (publish.yml).
+#
+# The secrets it needs are listed in scripts/ci/signing.sh and in
+# docs/DISTRIBUTION.md ("Releases every two weeks"). Without them it stops
+# before changing anything.
+
+on:
+  schedule:
+    - cron: '0 6 * * 2'
+  workflow_dispatch:
+    inputs:
+      part:
+        description: Which part of the version to raise
+        type: choice
+        options: [minor, patch, major]
+        default: minor
+      force:
+        description: Release now, without waiting two weeks since the last
+        type: boolean
+        default: false
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  due:
+    name: Is a release due?
+    runs-on: ubuntu-latest
+    outputs:
+      due: ${{ steps.due.outputs.due }}
+      version: ${{ steps.due.outputs.version }}
+      last: ${{ steps.due.outputs.last }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - id: due
+        env:
+          PART: ${{ inputs.part || 'minor' }}
+          FORCE: ${{ inputs.force && '--force' || '' }}
+        run: |
+          # zsh is not on Ubuntu runners by default.
+          command -v zsh >/dev/null || { sudo apt-get update -q && sudo apt-get install -y -q zsh; }
+          scripts/release-due.sh "$PART" $FORCE | tee due.txt
+          { echo "### Release"; echo; sed 's/^/- /' due.txt; } >> "$GITHUB_STEP_SUMMARY"
+
+  test:
+    name: Every test
+    needs: due
+    if: needs.due.outputs.due == 'yes'
+    uses: ./.github/workflows/ci.yml
+    with:
+      performance: true
+
+  release:
+    name: Forester ${{ needs.due.outputs.version }}
+    needs: [due, test]
+    if: needs.due.outputs.due == 'yes'
+    runs-on: macos-26
+    timeout-minutes: 120
+    permissions:
+      contents: write
+    env:
+      VERSION: ${{ needs.due.outputs.version }}
+      LAST: ${{ needs.due.outputs.last }}
+    steps:
+      # The commit the tests passed on. If main has moved on since, the push
+      # at the end is refused and nothing untested is released.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+
+      - name: Use the newest Xcode
+        run: scripts/ci/select-xcode.sh
+
+      - name: Signing
+        id: signing
+        env:
+          APPLE_CERTIFICATES_P12: ${{ secrets.APPLE_CERTIFICATES_P12 }}
+          APPLE_CERTIFICATES_PASSWORD: ${{ secrets.APPLE_CERTIFICATES_PASSWORD }}
+          APPSTORE_PROFILE: ${{ secrets.APPSTORE_PROFILE }}
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
+          SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
+        run: |
+          scripts/ci/signing.sh
+          if ! grep -qx 'appstore=true' "$GITHUB_OUTPUT"; then
+            echo "::error::The App Store package cannot be signed and uploaded with the secrets set; nothing was changed. See docs/DISTRIBUTION.md, \"Releases every two weeks\"."
+            exit 1
+          fi
+
+      - name: Raise the version to ${{ env.VERSION }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          echo "$VERSION" > VERSION
+          git commit -q -m "Forester $VERSION" VERSION
+
+      - name: Build and upload the App Store package
+        env:
+          PROFILE: ${{ steps.signing.outputs.profile }}
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          # Every upload needs a build number of its own: a second attempt
+          # of this run may follow one that uploaded.
+          FORESTER_BUILD: ${{ github.run_attempt == 1 && needs.due.outputs.version || format('{0}.{1}', needs.due.outputs.version, github.run_attempt) }}
+        run: |
+          scripts/make-appstore.sh "$PROFILE"
+          # The form both the runners' Xcode and newer ones accept; the key is
+          # found by its id in ~/.appstoreconnect/private_keys (signing.sh).
+          xcrun altool --upload-app -f "build/AppStore/Forester-$VERSION.pkg" -t macos \
+            --apiKey "$ASC_KEY_ID" --apiIssuer "$ASC_ISSUER_ID"
+          echo "- Uploaded to App Store Connect: version $VERSION, build $FORESTER_BUILD" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Build the download
+        if: steps.signing.outputs.download == 'true'
+        env:
+          FORESTER_NOTARY_PROFILE: forester-notary
+          FORESTER_UPDATE_KEY_FILE: ${{ steps.signing.outputs.update_key }}
+        run: |
+          scripts/make-release.sh
+          cp site/updates/appcast.xml "$RUNNER_TEMP/appcast.xml"
+          git checkout -- site/updates/appcast.xml
+
+      - name: Push the version and its tag
+        run: |
+          git tag -a "v$VERSION" -m "Forester $VERSION"
+          git push origin "HEAD:refs/heads/main" "v$VERSION"
+
+      - name: Draft the GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          assets=()
+          for folder in build build/AppStore; do
+            if [ -d "$folder/Forester.dSYM" ]; then
+              name="Forester-$VERSION-$([ "$folder" = build ] && echo download || echo app-store).dSYM.zip"
+              ditto -c -k --keepParent "$folder/Forester.dSYM" "$RUNNER_TEMP/$name"
+              assets+=("$RUNNER_TEMP/$name")
+            fi
+          done
+          for file in build/Forester.dmg build/forester.rb "$RUNNER_TEMP/appcast.xml"; do
+            [ -f "$file" ] && assets+=("$file")
+          done
+          gh release create "v$VERSION" --draft --title "Forester $VERSION" \
+            --generate-notes --notes-start-tag "$LAST" "${assets[@]}"
+          {
+            echo "- Draft release: v$VERSION, $(echo "${#assets[@]}") files"
+            echo
+            echo "**Next, by a person:** in App Store Connect, once the build has been processed, add build to version $VERSION and Submit for Review. On GitHub, read the draft release and publish it."
+          } >> "$GITHUB_STEP_SUMMARY"

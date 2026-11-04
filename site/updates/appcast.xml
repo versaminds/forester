@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- SPDX-License-Identifier: LicenseRef-PolyForm-Shield-1.0.0 -->
+<!-- Forester's updates for the download from this website: scripts/make-release.sh
+     adds each release, signed with VersaMinds' update key. The Mac App Store
+     version is updated by the App Store and never reads this. -->
+<rss version="2.0" xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle">
+  <channel>
+    <title>Forester</title>
+    <link>https://forester.versaminds.live/</link>
+    <description>Releases of Forester for Mac, signed by VersaMinds.</description>
+    <language>en</language>
+    <!-- Releases, newest first -->
+  </channel>
+</rss>

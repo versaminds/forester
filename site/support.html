@@ -1,0 +1,78 @@
+<!doctype html>
+<!-- SPDX-License-Identifier: LicenseRef-PolyForm-Shield-1.0.0 · Copyright © 2026 VersaMinds -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Support · Forester</title>
+<meta name="description" content="How to get help with Forester, report a problem or ask for a feature.">
+<meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0a0e15" media="(prefers-color-scheme: dark)">
+<link rel="canonical" href="https://forester.versaminds.live/support.html">
+<link rel="icon" type="image/png" sizes="64x64" href="img/favicon-64.png">
+<link rel="apple-touch-icon" href="img/apple-touch-icon.png">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+
+<svg class="sprite" aria-hidden="true" focusable="false">
+  <defs>
+    <symbol id="i-coffee" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 9.5h11v5a4.5 4.5 0 01-4.5 4.5h-2a4.5 4.5 0 01-4.5-4.5v-5z"/><path d="M15.5 11h1.25a2.25 2.25 0 010 4.5H15.5"/><path d="M8 3.5c-.7.9-.7 2 0 3M11.5 3.5c-.7.9-.7 2 0 3"/></g></symbol>
+  </defs>
+</svg>
+
+<header class="site-header">
+  <div class="wrap">
+    <a class="brand" href="index.html"><img src="img/icon-64.png" alt="" width="30" height="30">Forester</a>
+    <nav class="nav" aria-label="Sections">
+      <a href="index.html#features">Features</a>
+      <a href="index.html#active-directory">Active Directory</a>
+      <a href="index.html#privacy">Privacy</a>
+      <a href="index.html#source-code">Source code</a>
+      <a href="index.html#faq">FAQ</a>
+    </nav>
+    <a class="btn btn-primary" href="/app-store">Download</a>
+  </div>
+</header>
+
+<main id="main" class="page">
+  <h1>Support</h1>
+
+  <p>Forester is made by VersaMinds. If something does not work as you expect, or you would like it to do more, we want to hear about it.</p>
+
+  <h2>Report a problem or ask for a feature</h2>
+  <p>Email <a href="mailto:support@versaminds.live">support@versaminds.live</a>, or open an issue on <a href="https://github.com/versaminds/forester/issues">GitHub</a> if you are happy for others to see and follow it. Emails are answered by the people who make Forester, usually within a few working days.</p>
+  <p>Choose <strong>Help › Copy Diagnostics</strong> in Forester and paste the result into your report. It says which version you have, which kind of server you connect to and how, and the last errors, without host names, user names or passwords. An error can still name an entry, so read it before you send it. Then add:</p>
+  <ul>
+    <li>what you did, step by step;</li>
+    <li>what you expected, and what happened instead;</li>
+    <li>a screenshot, if it helps, with names covered.</li>
+  </ul>
+  <p>Please leave names, addresses and anything else from your directory out of public issues.</p>
+
+  <h2>Common questions</h2>
+  <p><strong>Why can I not change anything?</strong> Every connection starts read-only, so a stray click cannot change a production directory. Choose <strong>Read-only</strong> in the toolbar to allow changes for that connection.</p>
+  <p><strong>Why does Forester ask about a certificate?</strong> Your Mac does not trust the certificate the server showed, often because your organisation's own certificate authority is not installed on this Mac. Choose <strong>Show Certificate…</strong> to check it before you trust it.</p>
+  <p><strong>Kerberos sign-in does not work.</strong> It needs StartTLS or LDAPS, the domain controller's full DNS name as the host, and a Kerberos ticket on this Mac (from Ticket Viewer, <code>kinit</code> or your organisation's single sign-on).</p>
+  <p>More answers are in the <a href="index.html#faq">FAQ</a>. What Forester stores, and where, is in the <a href="privacy.html">privacy policy</a>; who makes it is in the <a href="legal.html">legal notice</a>.</p>
+</main>
+
+<footer class="site-footer">
+  <div class="wrap">
+    <div class="maker"><p>Made by <a href="https://www.versaminds.live">VersaMinds</a>, the company behind Stackbridge and <a href="https://wayfinder.versaminds.live">Wayfinder</a>. © 2026 VersaMinds BV.</p>
+      <p class="legal">VersaMinds BV · Petrus Van Bavegemstraat 17, 9200 Dendermonde, Belgium · Enterprise and VAT number BE 0804.360.325</p></div>
+    <nav aria-label="Footer">
+      <a href="support.html">Support</a>
+      <a href="privacy.html">Privacy</a>
+      <a href="terms.html">Terms</a>
+      <a href="legal.html">Legal notice</a>
+      <a href="https://polyformproject.org/licenses/shield/1.0.0">Licence</a>
+      <a href="https://github.com/versaminds/forester">GitHub</a>
+      <a href="https://www.versaminds.live">versaminds.live</a>
+      <a class="coffee-link" href="https://buymeacoffee.com/lennertmertens"><svg aria-hidden="true"><use href="#i-coffee"/></svg>Buy me a coffee</a>
+    </nav>
+  </div>
+</footer>
+</body>
+</html>

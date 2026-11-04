@@ -1,0 +1,407 @@
+<!doctype html>
+<!-- SPDX-License-Identifier: LicenseRef-PolyForm-Shield-1.0.0 · Copyright © 2026 VersaMinds -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Forester: the LDAP and Active Directory browser for Mac</title>
+<meta name="description" content="Browse, search and administer Active Directory and LDAP directories in a native Mac app that stays read-only until you allow changes. Free, with its source code public, by VersaMinds.">
+<meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0a0e15" media="(prefers-color-scheme: dark)">
+<link rel="canonical" href="https://forester.versaminds.live/">
+<link rel="icon" type="image/png" sizes="64x64" href="img/favicon-64.png">
+<link rel="apple-touch-icon" href="img/apple-touch-icon.png">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Forester">
+<meta property="og:title" content="Forester: the LDAP and Active Directory browser for Mac">
+<meta property="og:description" content="Browse, search and administer your directory in a native Mac app. Read-only until you allow changes. Free, with its source code public.">
+<meta property="og:url" content="https://forester.versaminds.live/">
+<meta property="og:image" content="https://forester.versaminds.live/img/og.jpg">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+
+<svg class="sprite" aria-hidden="true" focusable="false">
+  <defs>
+    <symbol id="i-download" viewBox="0 0 24 24"><path d="M12 4v11m0 0l-4.5-4.5M12 15l4.5-4.5M5 19.5h14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+    <symbol id="i-github" viewBox="0 0 24 24"><path fill="currentColor" d="M12 2.2a10 10 0 00-3.16 19.49c.5.09.68-.22.68-.48v-1.7c-2.78.6-3.37-1.34-3.37-1.34-.45-1.16-1.11-1.47-1.11-1.47-.91-.62.07-.61.07-.61 1 .07 1.53 1.03 1.53 1.03.9 1.53 2.34 1.09 2.91.83.09-.65.35-1.09.63-1.34-2.22-.25-4.55-1.11-4.55-4.94 0-1.09.39-1.98 1.03-2.68-.1-.25-.45-1.27.1-2.64 0 0 .84-.27 2.75 1.02a9.5 9.5 0 015 0c1.91-1.29 2.75-1.02 2.75-1.02.55 1.37.2 2.39.1 2.64.64.7 1.03 1.59 1.03 2.68 0 3.84-2.34 4.69-4.57 4.93.36.31.68.92.68 1.86v2.76c0 .27.18.58.69.48A10 10 0 0012 2.2z"/></symbol>
+    <symbol id="i-tree" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3.5" width="7" height="4.5" rx="1.3"/><rect x="12" y="10" width="9" height="4" rx="1.3"/><rect x="12" y="16.5" width="9" height="4" rx="1.3"/><path d="M6.5 8v10.5H12M6.5 12H12"/></g></symbol>
+    <symbol id="i-decode" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M8 7l-5 5 5 5M16 7l5 5-5 5"/><path d="M13.5 5l-3 14"/></g></symbol>
+    <symbol id="i-edit" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 5.5l4 4L8 20H4v-4L14.5 5.5z"/><path d="M12.5 7.5l4 4"/></g></symbol>
+    <symbol id="i-person" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="10" cy="8" r="3.6"/><path d="M3.5 20c.8-3.6 3.4-5.5 6.5-5.5 1.5 0 2.9.4 4 1.3"/><path d="M15.5 18.5l2 2 4-4.5"/></g></symbol>
+    <symbol id="i-search" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="10.5" cy="10.5" r="6"/><path d="M15 15l5 5"/></g></symbol>
+    <symbol id="i-file" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3.5H7A1.5 1.5 0 005.5 5v14A1.5 1.5 0 007 20.5h10a1.5 1.5 0 001.5-1.5V8L14 3.5z"/><path d="M14 3.5V8h4.5M9 13h6M9 16.5h6"/></g></symbol>
+    <symbol id="i-lock" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="10.5" width="14" height="10" rx="2"/><path d="M8 10.5V7.5a4 4 0 018 0v3"/></g></symbol>
+    <symbol id="i-key" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="15" r="4.5"/><path d="M11.5 12l8-8M16.5 7l2.5 2.5M14.5 9l2 2"/></g></symbol>
+    <symbol id="i-shield" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l7.5 3v5.5c0 4.6-3.2 8.2-7.5 9.5-4.3-1.3-7.5-4.9-7.5-9.5V6L12 3z"/><path d="M9 12l2.2 2.2L15.5 10"/></g></symbol>
+    <symbol id="i-eye-off" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3l18 18"/><path d="M10.6 5.6A10 10 0 0112 5.5c5 0 8.5 4.2 9.5 6.5-.4 1-1.3 2.4-2.6 3.7M6.6 6.7C4.6 8 3.1 10 2.5 12c1 2.3 4.5 6.5 9.5 6.5 1.7 0 3.2-.5 4.5-1.2"/><path d="M9.9 9.9a3 3 0 004.2 4.2"/></g></symbol>
+    <symbol id="i-cube" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l8 4.5v9L12 21l-8-4.5v-9L12 3z"/><path d="M4 7.5l8 4.5 8-4.5M12 12v9"/></g></symbol>
+    <symbol id="i-coffee" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 9.5h11v5a4.5 4.5 0 01-4.5 4.5h-2a4.5 4.5 0 01-4.5-4.5v-5z"/><path d="M15.5 11h1.25a2.25 2.25 0 010 4.5H15.5"/><path d="M8 3.5c-.7.9-.7 2 0 3M11.5 3.5c-.7.9-.7 2 0 3"/></g></symbol>
+    <symbol id="i-keyboard" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="6" width="19" height="12" rx="2"/><path d="M6 10h.01M9.5 10h.01M13 10h.01M16.5 10h.01M8 14h8"/></g></symbol>
+  </defs>
+</svg>
+
+<header class="site-header">
+  <div class="wrap">
+    <a class="brand" href="#top" aria-label="Forester home"><img src="img/icon-64.png" alt="" width="30" height="30">Forester</a>
+    <nav class="nav" aria-label="Sections">
+      <a href="#features">Features</a>
+      <a href="#active-directory">Active Directory</a>
+      <a href="#privacy">Privacy</a>
+      <a href="#source-code">Source code</a>
+      <a href="#faq">FAQ</a>
+    </nav>
+    <a class="btn btn-primary" href="/app-store">Download</a>
+  </div>
+</header>
+
+<main id="main">
+
+<div class="hero" id="top">
+  <div class="wrap">
+    <img class="hero-icon" src="img/icon-256.png" alt="" width="96" height="96">
+    <h1>The LDAP and <span class="nowrap">Active Directory</span> browser for Mac.</h1>
+    <p class="lede">Browse, search and look after your directory in a fast, native app. Every connection stays read-only until you allow changes, so you can open production without a second thought.</p>
+    <div class="actions">
+      <a class="btn btn-primary" href="/app-store"><svg aria-hidden="true"><use href="#i-download"/></svg>Download on the Mac App Store</a>
+      <a class="btn btn-secondary" href="https://github.com/versaminds/forester"><svg aria-hidden="true"><use href="#i-github"/></svg>View on GitHub</a>
+    </div>
+    <p class="meta">Free on the Mac App Store · Source on GitHub · macOS 14 Sonoma or later · Apple silicon and Intel</p>
+    <figure class="shot hero-shot">
+      <picture>
+        <source media="(prefers-color-scheme: dark)" srcset="img/overview-dark-1600.webp?v=4a0c0f108e 1600w, img/overview-dark-2880.webp?v=f57b5223e6 2880w" sizes="(min-width: 1208px) 1160px, calc(100vw - 32px)">
+        <img src="img/overview-light-1600.webp?v=27964661c5" srcset="img/overview-light-1600.webp?v=27964661c5 1600w, img/overview-light-2880.webp?v=dd1c941baf 2880w" sizes="(min-width: 1208px) 1160px, calc(100vw - 32px)" width="1440" height="900" fetchpriority="high"
+             alt="Forester's main window: connections in the sidebar, the directory tree of corp.example in the middle, and the user Pieter Van Damme on the right with his account options, identity and direct reports.">
+      </picture>
+    </figure>
+  </div>
+</div>
+
+<div class="works">
+  <div class="wrap">
+    <p>Built for</p>
+    <ul class="chips">
+      <li>Active Directory</li>
+      <li>AD LDS</li>
+      <li>OpenLDAP</li>
+      <li>389 Directory Server</li>
+      <li>eDirectory</li>
+      <li>Any LDAPv3 server</li>
+    </ul>
+  </div>
+</div>
+
+<section id="safe">
+  <div class="wrap split">
+    <div class="text">
+      <span class="label">Read-only by default</span>
+      <h2>Open production without holding your breath.</h2>
+      <p>A new connection can read but never write. Forester refuses every change until you allow it for that connection, with the Read-only button in the toolbar or <kbd>⌥</kbd><kbd>⌘</kbd><kbd>E</kbd>. The toolbar and the status bar say in words which mode you are in, so nobody has to guess.</p>
+      <ul class="ticks">
+        <li><strong>Per connection.</strong> Editing your lab never unlocks production.</li>
+        <li><strong>Asks before it matters.</strong> Deletes, moves and password resets say exactly what they will touch.</li>
+        <li><strong>Deleting a branch</strong> waits until you type its name.</li>
+        <li><strong>Undo.</strong> Most changes come back with <kbd>⌘</kbd><kbd>Z</kbd>, and Change History lists every change made since you connected.</li>
+      </ul>
+    </div>
+    <figure class="shot small">
+      <picture>
+        <source media="(prefers-color-scheme: dark)" srcset="img/read-only-dark.webp?v=900180bc79">
+        <img src="img/read-only-light.webp?v=1b4a5d5fd4" width="748" height="460" loading="lazy"
+             alt="The Read-only button in Forester's toolbar, with the account options greyed out and the note: Read-only. Click Read-only in the toolbar, or press Option Command E, to change these.">
+      </picture>
+    </figure>
+  </div>
+</section>
+
+<section id="features" class="soft">
+  <div class="wrap">
+    <div class="section-head center">
+      <span class="label">Everything in one window</span>
+      <h2>Built for the work you actually do.</h2>
+      <p>The tree, the entry and the tools you reach for, in an app that feels like the rest of your Mac.</p>
+    </div>
+    <div class="grid">
+      <div class="card">
+        <div class="icon"><svg aria-hidden="true"><use href="#i-tree"/></svg></div>
+        <h3>Browse at any size</h3>
+        <p>A native outline that loads one level at a time and pages through large OUs. Object icons, disabled accounts dimmed, containers only when you want, and drag to move.</p>
+      </div>
+      <div class="card">
+        <div class="icon"><svg aria-hidden="true"><use href="#i-decode"/></svg></div>
+        <h3>Decoded, not raw</h3>
+        <p>SIDs, GUIDs, timestamps, account flags and group types in plain words, with the raw value one click away. Hex dumps, photos and certificates too.</p>
+      </div>
+      <div class="card">
+        <div class="icon"><svg aria-hidden="true"><use href="#i-edit"/></svg></div>
+        <h3>Edits that know the schema</h3>
+        <p>The right editor for every value, chosen from your server's own schema: text, numbers, dates, account expiry, DNs with a directory picker, files and photos.</p>
+      </div>
+      <div class="card">
+        <div class="icon"><svg aria-hidden="true"><use href="#i-person"/></svg></div>
+        <h3>Accounts in a click</h3>
+        <p>Enable, disable and unlock accounts, reset passwords with a generated one, and set the options you know from Active Directory Users and Computers.</p>
+      </div>
+      <div class="card">
+        <div class="icon"><svg aria-hidden="true"><use href="#i-search"/></svg></div>
+        <h3>Search that checks itself</h3>
+        <p>Filters checked as you type, attribute names completed from the schema, a builder for when you would rather click, and 32 ready-made searches.</p>
+      </div>
+      <div class="card">
+        <div class="icon"><svg aria-hidden="true"><use href="#i-file"/></svg></div>
+        <h3>LDIF in and out</h3>
+        <p>Import new entries and change records with a summary first and a log of every record after. Export an entry, a branch or search results as LDIF or CSV.</p>
+      </div>
+      <div class="card wide">
+        <div>
+          <div class="icon"><svg aria-hidden="true"><use href="#i-keyboard"/></svg></div>
+          <h3>Made for the keyboard</h3>
+          <p>Every common task has a shortcut, and the menus show them all.</p>
+        </div>
+        <dl class="keys">
+          <div><dt>Browse or search</dt><dd><kbd>⌘</kbd><kbd>1</kbd><kbd>⌘</kbd><kbd>2</kbd></dd></div>
+          <div><dt>Go to a DN</dt><dd><kbd>⇧</kbd><kbd>⌘</kbd><kbd>G</kbd></dd></div>
+          <div><dt>Show in the tree</dt><dd><kbd>⌘</kbd><kbd>L</kbd></dd></div>
+          <div><dt>Copy the DN</dt><dd><kbd>⇧</kbd><kbd>⌘</kbd><kbd>C</kbd></dd></div>
+          <div><dt>Allow or stop changes</dt><dd><kbd>⌥</kbd><kbd>⌘</kbd><kbd>E</kbd></dd></div>
+          <div><dt>Reset a password</dt><dd><kbd>⇧</kbd><kbd>⌘</kbd><kbd>P</kbd></dd></div>
+        </dl>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="active-directory">
+  <div class="wrap split">
+    <div class="text">
+      <span class="label">Active Directory</span>
+      <h2>Answers that usually need a Windows machine.</h2>
+      <p>Forester reads Active Directory the way an administrator does, and shows what is easy to miss.</p>
+      <ul class="ticks">
+        <li><strong>Domain information:</strong> functional levels, operations masters, domain controllers and sites, trusts, the Recycle Bin and tombstone lifetime.</li>
+        <li><strong>Password policies:</strong> the default policy and every fine-grained one, with who it applies to.</li>
+        <li><strong>Account status on every domain controller,</strong> because failed sign-ins and last sign-in are kept per DC.</li>
+        <li><strong>Replication metadata</strong> for each attribute, and when each member joined a group.</li>
+        <li><strong>Nested membership</strong> in a single query, primary groups, and groups past 1,500 members read in full.</li>
+        <li><strong>Permissions in words:</strong> who may do what with an object, whether it is inherited, and what your own account may do there.</li>
+        <li><strong>The whole forest:</strong> search every domain at once through the global catalog, and open any domain from the list.</li>
+      </ul>
+      <div class="badges" aria-label="Examples of account badges">
+        <span class="badge green">Enabled</span>
+        <span class="badge amber">Password never expires</span>
+        <span class="badge amber">Has SPN</span>
+        <span class="badge blue">Privileged</span>
+      </div>
+    </div>
+    <figure class="shot small">
+      <picture>
+        <source media="(prefers-color-scheme: dark)" srcset="img/service-account-dark.webp?v=ce9248ef69">
+        <img src="img/service-account-light.webp?v=632d495dbc" width="748" height="885" loading="lazy"
+             alt="The service account svc_sql in Forester, marked Password never expires and Has SPN, with its account options, last sign-in on this domain controller, password policy PSO-ServiceAccounts and service principal names.">
+      </picture>
+    </figure>
+  </div>
+</section>
+
+<section class="soft">
+  <div class="wrap">
+    <div class="section-head center">
+      <span class="label">Search</span>
+      <h2>Find anything, then take it with you.</h2>
+      <p>Write an LDAP filter and Forester checks it as you type, or build one from conditions. Start from a ready-made search for disabled users, stale computers, Kerberoastable accounts, empty groups and more.</p>
+    </div>
+    <figure class="shot wide-shot">
+      <picture>
+        <source media="(prefers-color-scheme: dark)" srcset="img/search-dark-1600.webp?v=66581ff061 1600w, img/search-dark-2880.webp?v=a79f633ec9 2880w" sizes="(min-width: 1208px) 1160px, calc(100vw - 32px)">
+        <img src="img/search-light-1600.webp?v=599f3e28c6" srcset="img/search-light-1600.webp?v=599f3e28c6 1600w, img/search-light-2880.webp?v=0f2c1c257f 2880w" sizes="(min-width: 1208px) 1160px, calc(100vw - 32px)" width="1440" height="900" loading="lazy"
+             alt="Forester's search: the Password never expires preset, six matching accounts, and the selected account svc_sql with its account options.">
+      </picture>
+    </figure>
+    <ul class="ticks columns">
+      <li><strong>Find by name</strong> in the toolbar uses Active Directory's own name resolution, so a name, account or mail address all work.</li>
+      <li><strong>Results page past the server's limits,</strong> and export to CSV or LDIF with the attributes you choose.</li>
+    </ul>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <div class="section-head center">
+      <span class="label">Changes</span>
+      <h2>Change things with care.</h2>
+      <p>Adding one member to a large group sends one addition, not the whole list. New users fill in their account names from the name you type. Rename, move and duplicate show the result before they send anything.</p>
+    </div>
+    <div class="pair">
+      <figure>
+        <div class="shot small">
+          <picture>
+            <source media="(prefers-color-scheme: dark)" srcset="img/password-dark.webp?v=552a21b6b8">
+            <img src="img/password-light.webp?v=0a5decd6b4" width="540" height="413" loading="lazy"
+                 alt="The Reset Password sheet, with a button to generate a strong password and the option that the user must change it at next sign-in.">
+          </picture>
+        </div>
+        <figcaption>Passwords, the Active Directory way or the LDAP way.</figcaption>
+      </figure>
+      <figure>
+        <div class="shot small">
+          <picture>
+            <source media="(prefers-color-scheme: dark)" srcset="img/import-dark.webp?v=2c2043d4cd">
+            <img src="img/import-light.webp?v=ea8423b4a0" width="640" height="424" loading="lazy"
+                 alt="The Import LDIF sheet, summarising a file of eight records: four new entries, two modifications, one rename or move and one deletion.">
+          </picture>
+        </div>
+        <figcaption>See what an LDIF file will do before you import it.</figcaption>
+      </figure>
+    </div>
+  </div>
+</section>
+
+<section id="privacy" class="soft">
+  <div class="wrap">
+    <div class="section-head center">
+      <span class="label">Privacy and security</span>
+      <h2>Your directory stays between you and your server.</h2>
+      <p>A directory browser holds the keys to your organisation. Forester is built to be easy to trust with them.</p>
+    </div>
+    <div class="privacy-grid">
+      <div class="card">
+        <div class="icon"><svg aria-hidden="true"><use href="#i-eye-off"/></svg></div>
+        <h3>Nothing phones home</h3>
+        <p>No account, no analytics, no crash reports. Forester talks only to the directory servers you add, and to their domain controllers when you ask for an account's status on each. The Mac App Store keeps it up to date.</p>
+      </div>
+      <div class="card">
+        <div class="icon"><svg aria-hidden="true"><use href="#i-key"/></svg></div>
+        <h3>Passwords in your keychain</h3>
+        <p>Kept in the macOS keychain, tied to the server they were saved for, and never written into exported connection files. Turn off “Remember the password” and nothing is saved.</p>
+      </div>
+      <div class="card">
+        <div class="icon"><svg aria-hidden="true"><use href="#i-lock"/></svg></div>
+        <h3>Encrypted connections</h3>
+        <p>LDAPS and StartTLS, with the certificate chain and its fingerprint shown before you choose to trust it. Sign in with your Kerberos ticket and no password is typed at all.</p>
+      </div>
+      <div class="card">
+        <div class="icon"><svg aria-hidden="true"><use href="#i-cube"/></svg></div>
+        <h3>No third-party code</h3>
+        <p>Forester from the Mac App Store is written entirely in Swift on Apple's own frameworks, the LDAP client included. There are no dependencies to audit.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="source-code">
+  <div class="wrap">
+    <div class="oss">
+      <div>
+        <span class="label">Source code</span>
+        <h2>Read every line before you trust it.</h2>
+        <p>Every line of Forester is public, under the PolyForm Shield License. Read the code, build it yourself, report a problem or send a change. Use it anywhere, at home or at work; the one thing the licence rules out is offering a product that competes with it.</p>
+        <div class="code" aria-label="Build Forester from source">git clone https://github.com/versaminds/forester
+cd forester &amp;&amp; scripts/build-app.sh</div>
+      </div>
+      <div class="actions oss-actions">
+        <a class="btn btn-primary" href="https://github.com/versaminds/forester"><svg aria-hidden="true"><use href="#i-github"/></svg>Source on GitHub</a>
+        <a class="btn btn-coffee" href="https://buymeacoffee.com/lennertmertens"><svg aria-hidden="true"><use href="#i-coffee"/></svg>Buy me a coffee</a>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="faq" class="soft">
+  <div class="wrap">
+    <div class="section-head center">
+      <span class="label">Questions</span>
+      <h2>Good to know.</h2>
+    </div>
+    <div class="faq">
+      <details>
+        <summary>Is Forester really free?</summary>
+        <p>Yes. It is free to download and free to use, at home and at work. There is no paid tier and no account to create. If it saves you time, you can <a href="https://buymeacoffee.com/lennertmertens">buy me a coffee</a>.</p>
+      </details>
+      <details>
+        <summary>Which Macs does it run on?</summary>
+        <p>Any Mac with macOS 14 Sonoma or later, with Apple silicon or an Intel processor.</p>
+      </details>
+      <details>
+        <summary>How is Forester updated?</summary>
+        <p>Through the Mac App Store, like your other apps. Turn on automatic updates in the App Store's settings and each new version arrives by itself.</p>
+      </details>
+      <details>
+        <summary>Can it change my directory by accident?</summary>
+        <p>No. A new connection is read-only, and Forester refuses every change until you allow changes for that connection. You can make it read-only again at any time.</p>
+      </details>
+      <details>
+        <summary>Does it work with Microsoft Entra ID?</summary>
+        <p>Microsoft Entra ID (formerly Azure Active Directory) has no LDAP interface, so there is nothing for an LDAP browser to connect to. Forester works with on-premises Active Directory and with any directory that speaks LDAP or LDAPS.</p>
+      </details>
+      <details>
+        <summary>Can I sign in with Kerberos?</summary>
+        <p>Yes. Forester signs in with the Kerberos ticket your Mac already has, from Ticket Viewer, kinit or your organisation's single sign-on, over LDAPS or StartTLS and bound to that connection, so no password is typed or kept. A name and password, or an anonymous connection, work too.</p>
+      </details>
+      <details>
+        <summary>Does it replace Active Directory Users and Computers?</summary>
+        <p>For most of what people use it for on a Mac, yes: finding, reading and changing users, groups and computers, passwords and account options. It shows permissions in words but does not edit them, apart from "user cannot change password", and it does not edit Group Policy.</p>
+      </details>
+      <details>
+        <summary>What does Forester send to VersaMinds?</summary>
+        <p>Nothing. There are no analytics, no crash reports and no account. The <a href="privacy.html">privacy policy</a> has the details.</p>
+      </details>
+      <details>
+        <summary>How do I report a problem or ask for a feature?</summary>
+        <p>The <a href="support.html">support page</a> says how: by email, or as an issue on GitHub. Please leave out names, addresses and anything else from your directory that others should not see.</p>
+      </details>
+    </div>
+  </div>
+</section>
+
+<section id="versaminds">
+  <div class="wrap">
+    <div class="section-head center">
+      <span class="label">From VersaMinds</span>
+      <h2>Your directory, and what your team knows about it.</h2>
+      <p>Forester shows what is in your directory. Stackbridge, made by the same people, keeps what your IT team knows about it: incidents, runbooks and decisions, each approved by a person, with where it came from, on your own servers.</p>
+      <div class="actions">
+        <a class="btn btn-secondary" href="https://stackbridge.io">See Stackbridge</a>
+        <a class="btn btn-secondary" href="https://www.versaminds.live">About VersaMinds</a>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="closing">
+  <div class="wrap">
+    <div class="band">
+      <img src="img/icon-256.png" alt="" width="80" height="80">
+      <h2>Get Forester.</h2>
+      <p>Free, every line public, and at home on your Mac.</p>
+      <div class="actions">
+        <a class="btn btn-primary" href="/app-store"><svg aria-hidden="true"><use href="#i-download"/></svg>Download on the Mac App Store</a>
+        <a class="btn btn-secondary" href="https://github.com/versaminds/forester"><svg aria-hidden="true"><use href="#i-github"/></svg>View on GitHub</a>
+      </div>
+    </div>
+  </div>
+</section>
+
+</main>
+
+<footer class="site-footer">
+  <div class="wrap">
+    <div class="maker"><p>Made by <a href="https://www.versaminds.live">VersaMinds</a>, the company behind Stackbridge and <a href="https://wayfinder.versaminds.live">Wayfinder</a>. © 2026 VersaMinds BV.</p>
+      <p class="legal">VersaMinds BV · Petrus Van Bavegemstraat 17, 9200 Dendermonde, Belgium · Enterprise and VAT number BE 0804.360.325</p></div>
+    <nav aria-label="Footer">
+      <a href="support.html">Support</a>
+      <a href="privacy.html">Privacy</a>
+      <a href="terms.html">Terms</a>
+      <a href="legal.html">Legal notice</a>
+      <a href="https://polyformproject.org/licenses/shield/1.0.0">Licence</a>
+      <a href="https://github.com/versaminds/forester">GitHub</a>
+      <a href="https://www.versaminds.live">versaminds.live</a>
+      <a class="coffee-link" href="https://buymeacoffee.com/lennertmertens"><svg aria-hidden="true"><use href="#i-coffee"/></svg>Buy me a coffee</a>
+    </nav>
+  </div>
+</footer>
+</body>
+</html>

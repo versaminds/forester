@@ -1,0 +1,281 @@
+# SPDX-License-Identifier: LicenseRef-PolyForm-Shield-1.0.0
+# Copyright © 2026 VersaMinds
+# A focused slice of the Active Directory schema for the test directory.
+# Real AD names (and OIDs where AD's are used), with syntaxes and matching rules
+# slapd 2.4 knows, so filters such as (lastLogonTimestamp<=...) and
+# (objectSid=\01\05...) work. Also the attributes behind the domain dashboard,
+# password policies, trusts, replication metadata, security descriptors and
+# password resets, and 389 Directory Server's nsAccountLock.
+#
+# dNSHostName, operatingSystemVersion, memberOf and container are compiled into
+# Apple's slapd, so they are not redefined here.
+
+attributetype ( 1.2.840.113556.1.4.159 NAME 'accountExpires'
+	EQUALITY integerMatch ORDERING integerOrderingMatch SYNTAX 1.3.6.1.4.1.1466.115.121.1.27 SINGLE-VALUE )
+
+attributetype ( 1.2.840.113556.1.4.150 NAME 'adminCount'
+	EQUALITY integerMatch ORDERING integerOrderingMatch SYNTAX 1.3.6.1.4.1.1466.115.121.1.27 SINGLE-VALUE )
+
+attributetype ( 1.2.840.113556.1.4.12 NAME 'badPwdCount'
+	EQUALITY integerMatch ORDERING integerOrderingMatch SYNTAX 1.3.6.1.4.1.1466.115.121.1.27 SINGLE-VALUE )
+
+attributetype ( 1.2.840.113556.1.4.38 NAME 'flags'
+	EQUALITY integerMatch ORDERING integerOrderingMatch SYNTAX 1.3.6.1.4.1.1466.115.121.1.27 SINGLE-VALUE )
+
+attributetype ( 1.2.840.113556.1.4.750 NAME 'groupType'
+	EQUALITY integerMatch ORDERING integerOrderingMatch SYNTAX 1.3.6.1.4.1.1466.115.121.1.27 SINGLE-VALUE )
+
+attributetype ( 1.2.840.113556.1.4.52 NAME 'lastLogon'
+	EQUALITY integerMatch ORDERING integerOrderingMatch SYNTAX 1.3.6.1.4.1.1466.115.121.1.27 SINGLE-VALUE )
+
+attributetype ( 1.2.840.113556.1.4.1696 NAME 'lastLogonTimestamp'
+	EQUALITY integerMatch ORDERING integerOrderingMatch SYNTAX 1.3.6.1.4.1.1466.115.121.1.27 SINGLE-VALUE )
+
+attributetype ( 1.2.840.113556.1.4.60 NAME 'lockoutDuration'
+	EQUALITY integerMatch ORDERING integerOrderingMatch SYNTAX 1.3.6.1.4.1.1466.115.121.1.27 SINGLE-VALUE )
+
+attributetype ( 1.2.840.113556.1.4.73 NAME 'lockoutThreshold'
+	EQUALITY integerMatch ORDERING integerOrderingMatch SYNTAX 1.3.6.1.4.1.1466.115.121.1.27 SINGLE-VALUE )
+
+attributetype ( 1.2.840.113556.1.4.662 NAME 'lockoutTime'
+	EQUALITY integerMatch ORDERING integerOrderingMatch SYNTAX 1.3.6.1.4.1.1466.115.121.1.27 SINGLE-VALUE )
+
+attributetype ( 1.2.840.113556.1.4.169 NAME 'logonCount'
+	EQUALITY integerMatch ORDERING integerOrderingMatch SYNTAX 1.3.6.1.4.1.1466.115.121.1.27 SINGLE-VALUE )
+
+attributetype ( 1.2.840.113556.1.4.74 NAME 'maxPwdAge'
+	EQUALITY integerMatch ORDERING integerOrderingMatch SYNTAX 1.3.6.1.4.1.1466.115.121.1.27 SINGLE-VALUE )
+
+attributetype ( 1.2.840.113556.1.4.79 NAME 'minPwdLength'
+	EQUALITY integerMatch ORDERING integerOrderingMatch SYNTAX 1.3.6.1.4.1.1466.115.121.1.27 SINGLE-VALUE )
+
+attributetype ( 1.2.840.113556.1.4.1459 NAME 'msDS-Behavior-Version'
+	EQUALITY integerMatch ORDERING integerOrderingMatch SYNTAX 1.3.6.1.4.1.1466.115.121.1.27 SINGLE-VALUE )
+
+attributetype ( 1.2.840.113556.1.4.98 NAME 'primaryGroupID'
+	EQUALITY integerMatch ORDERING integerOrderingMatch SYNTAX 1.3.6.1.4.1.1466.115.121.1.27 SINGLE-VALUE )
+
+attributetype ( 1.2.840.113556.1.4.96 NAME 'pwdLastSet'
+	EQUALITY integerMatch ORDERING integerOrderingMatch SYNTAX 1.3.6.1.4.1.1466.115.121.1.27 SINGLE-VALUE )
+
+attributetype ( 1.2.840.113556.1.4.302 NAME 'sAMAccountType'
+	EQUALITY integerMatch ORDERING integerOrderingMatch SYNTAX 1.3.6.1.4.1.1466.115.121.1.27 SINGLE-VALUE )
+
+attributetype ( 1.2.840.113556.1.4.8 NAME 'userAccountControl'
+	EQUALITY integerMatch ORDERING integerOrderingMatch SYNTAX 1.3.6.1.4.1.1466.115.121.1.27 SINGLE-VALUE )
+
+attributetype ( 1.2.840.113556.1.4.141 NAME 'versionNumber'
+	EQUALITY integerMatch ORDERING integerOrderingMatch SYNTAX 1.3.6.1.4.1.1466.115.121.1.27 SINGLE-VALUE )
+
+attributetype ( 1.2.840.113556.1.2.146 NAME 'company'
+	EQUALITY caseIgnoreMatch SUBSTR caseIgnoreSubstringsMatch SYNTAX 1.3.6.1.4.1.1466.115.121.1.15 SINGLE-VALUE )
+
+attributetype ( 1.2.840.113556.1.2.141 NAME 'department'
+	EQUALITY caseIgnoreMatch SUBSTR caseIgnoreSubstringsMatch SYNTAX 1.3.6.1.4.1.1466.115.121.1.15 SINGLE-VALUE )
+
+attributetype ( 1.2.840.113556.1.4.894 NAME 'gPCFileSysPath'
+	EQUALITY caseIgnoreMatch SUBSTR caseIgnoreSubstringsMatch SYNTAX 1.3.6.1.4.1.1466.115.121.1.15 SINGLE-VALUE )
+
+attributetype ( 1.2.840.113556.1.4.891 NAME 'gPLink'
+	EQUALITY caseIgnoreMatch SUBSTR caseIgnoreSubstringsMatch SYNTAX 1.3.6.1.4.1.1466.115.121.1.15 SINGLE-VALUE )
+
+attributetype ( 1.2.840.113556.1.4.363 NAME 'operatingSystem'
+	EQUALITY caseIgnoreMatch SUBSTR caseIgnoreSubstringsMatch SYNTAX 1.3.6.1.4.1.1466.115.121.1.15 SINGLE-VALUE )
+
+attributetype ( 1.2.840.113556.1.4.221 NAME 'sAMAccountName'
+	EQUALITY caseIgnoreMatch SUBSTR caseIgnoreSubstringsMatch SYNTAX 1.3.6.1.4.1.1466.115.121.1.15 SINGLE-VALUE )
+
+attributetype ( 1.2.840.113556.1.4.656 NAME 'userPrincipalName'
+	EQUALITY caseIgnoreMatch SUBSTR caseIgnoreSubstringsMatch SYNTAX 1.3.6.1.4.1.1466.115.121.1.15 SINGLE-VALUE )
+
+attributetype ( 1.2.840.113556.1.4.771 NAME 'servicePrincipalName'
+	EQUALITY caseIgnoreMatch SUBSTR caseIgnoreSubstringsMatch SYNTAX 1.3.6.1.4.1.1466.115.121.1.15 )
+
+attributetype ( 1.2.840.113556.1.4.653 NAME 'managedBy'
+	EQUALITY distinguishedNameMatch SYNTAX 1.3.6.1.4.1.1466.115.121.1.12 SINGLE-VALUE )
+
+attributetype ( 1.2.840.113556.1.2.436 NAME 'directReports'
+	EQUALITY distinguishedNameMatch SYNTAX 1.3.6.1.4.1.1466.115.121.1.12 )
+
+attributetype ( 1.2.840.113556.1.4.2 NAME 'objectGUID'
+	EQUALITY octetStringMatch SYNTAX 1.3.6.1.4.1.1466.115.121.1.40 SINGLE-VALUE )
+
+attributetype ( 1.2.840.113556.1.4.146 NAME 'objectSid'
+	EQUALITY octetStringMatch SYNTAX 1.3.6.1.4.1.1466.115.121.1.40 SINGLE-VALUE )
+
+attributetype ( 2.16.840.1.113730.3.1.35 NAME 'thumbnailPhoto'
+	EQUALITY octetStringMatch SYNTAX 1.3.6.1.4.1.1466.115.121.1.40 SINGLE-VALUE )
+
+attributetype ( 1.2.840.113556.1.2.3 NAME 'whenChanged'
+	EQUALITY generalizedTimeMatch ORDERING generalizedTimeOrderingMatch SYNTAX 1.3.6.1.4.1.1466.115.121.1.24 SINGLE-VALUE )
+
+attributetype ( 1.2.840.113556.1.2.2 NAME 'whenCreated'
+	EQUALITY generalizedTimeMatch ORDERING generalizedTimeOrderingMatch SYNTAX 1.3.6.1.4.1.1466.115.121.1.24 SINGLE-VALUE )
+
+attributetype ( 1.3.6.1.4.1.99999.2.1 NAME 'fSMORoleOwner'
+	EQUALITY distinguishedNameMatch SYNTAX 1.3.6.1.4.1.1466.115.121.1.12 SINGLE-VALUE )
+
+attributetype ( 1.3.6.1.4.1.99999.2.2 NAME 'nCName'
+	EQUALITY distinguishedNameMatch SYNTAX 1.3.6.1.4.1.1466.115.121.1.12 SINGLE-VALUE )
+
+attributetype ( 1.3.6.1.4.1.99999.2.3 NAME 'msDS-PSOAppliesTo'
+	EQUALITY distinguishedNameMatch SYNTAX 1.3.6.1.4.1.1466.115.121.1.12 )
+
+attributetype ( 1.3.6.1.4.1.99999.2.4 NAME 'msDS-EnabledFeature'
+	EQUALITY distinguishedNameMatch SYNTAX 1.3.6.1.4.1.1466.115.121.1.12 )
+
+attributetype ( 1.3.6.1.4.1.99999.2.5 NAME 'msDS-ResultantPSO'
+	EQUALITY distinguishedNameMatch SYNTAX 1.3.6.1.4.1.1466.115.121.1.12 SINGLE-VALUE )
+
+attributetype ( 1.3.6.1.4.1.99999.2.6 NAME 'nETBIOSName'
+	EQUALITY caseIgnoreMatch SUBSTR caseIgnoreSubstringsMatch SYNTAX 1.3.6.1.4.1.1466.115.121.1.15 SINGLE-VALUE )
+
+attributetype ( 1.3.6.1.4.1.99999.2.7 NAME 'dnsRoot'
+	EQUALITY caseIgnoreMatch SUBSTR caseIgnoreSubstringsMatch SYNTAX 1.3.6.1.4.1.1466.115.121.1.15 )
+
+attributetype ( 1.3.6.1.4.1.99999.2.8 NAME 'trustPartner'
+	EQUALITY caseIgnoreMatch SUBSTR caseIgnoreSubstringsMatch SYNTAX 1.3.6.1.4.1.1466.115.121.1.15 SINGLE-VALUE )
+
+attributetype ( 1.3.6.1.4.1.99999.2.9 NAME 'flatName'
+	EQUALITY caseIgnoreMatch SUBSTR caseIgnoreSubstringsMatch SYNTAX 1.3.6.1.4.1.1466.115.121.1.15 SINGLE-VALUE )
+
+attributetype ( 1.3.6.1.4.1.99999.2.10 NAME 'msDS-ReplAttributeMetaData'
+	EQUALITY caseIgnoreMatch SUBSTR caseIgnoreSubstringsMatch SYNTAX 1.3.6.1.4.1.1466.115.121.1.15 )
+
+attributetype ( 1.3.6.1.4.1.99999.2.11 NAME 'msDS-ReplValueMetaData'
+	EQUALITY caseIgnoreMatch SUBSTR caseIgnoreSubstringsMatch SYNTAX 1.3.6.1.4.1.1466.115.121.1.15 )
+
+attributetype ( 1.3.6.1.4.1.99999.2.12 NAME 'ms-DS-MachineAccountQuota'
+	EQUALITY integerMatch ORDERING integerOrderingMatch SYNTAX 1.3.6.1.4.1.1466.115.121.1.27 SINGLE-VALUE )
+
+attributetype ( 1.3.6.1.4.1.99999.2.13 NAME 'pwdHistoryLength'
+	EQUALITY integerMatch ORDERING integerOrderingMatch SYNTAX 1.3.6.1.4.1.1466.115.121.1.27 SINGLE-VALUE )
+
+attributetype ( 1.3.6.1.4.1.99999.2.14 NAME 'minPwdAge'
+	EQUALITY integerMatch ORDERING integerOrderingMatch SYNTAX 1.3.6.1.4.1.1466.115.121.1.27 SINGLE-VALUE )
+
+attributetype ( 1.3.6.1.4.1.99999.2.15 NAME 'pwdProperties'
+	EQUALITY integerMatch ORDERING integerOrderingMatch SYNTAX 1.3.6.1.4.1.1466.115.121.1.27 SINGLE-VALUE )
+
+attributetype ( 1.3.6.1.4.1.99999.2.16 NAME 'lockoutObservationWindow'
+	EQUALITY integerMatch ORDERING integerOrderingMatch SYNTAX 1.3.6.1.4.1.1466.115.121.1.27 SINGLE-VALUE )
+
+attributetype ( 1.3.6.1.4.1.99999.2.17 NAME 'tombstoneLifetime'
+	EQUALITY integerMatch ORDERING integerOrderingMatch SYNTAX 1.3.6.1.4.1.1466.115.121.1.27 SINGLE-VALUE )
+
+attributetype ( 1.3.6.1.4.1.99999.2.18 NAME 'msDS-PasswordSettingsPrecedence'
+	EQUALITY integerMatch ORDERING integerOrderingMatch SYNTAX 1.3.6.1.4.1.1466.115.121.1.27 SINGLE-VALUE )
+
+attributetype ( 1.3.6.1.4.1.99999.2.19 NAME 'msDS-MinimumPasswordLength'
+	EQUALITY integerMatch ORDERING integerOrderingMatch SYNTAX 1.3.6.1.4.1.1466.115.121.1.27 SINGLE-VALUE )
+
+attributetype ( 1.3.6.1.4.1.99999.2.20 NAME 'msDS-PasswordHistoryLength'
+	EQUALITY integerMatch ORDERING integerOrderingMatch SYNTAX 1.3.6.1.4.1.1466.115.121.1.27 SINGLE-VALUE )
+
+attributetype ( 1.3.6.1.4.1.99999.2.21 NAME 'msDS-MaximumPasswordAge'
+	EQUALITY integerMatch ORDERING integerOrderingMatch SYNTAX 1.3.6.1.4.1.1466.115.121.1.27 SINGLE-VALUE )
+
+attributetype ( 1.3.6.1.4.1.99999.2.22 NAME 'msDS-MinimumPasswordAge'
+	EQUALITY integerMatch ORDERING integerOrderingMatch SYNTAX 1.3.6.1.4.1.1466.115.121.1.27 SINGLE-VALUE )
+
+attributetype ( 1.3.6.1.4.1.99999.2.23 NAME 'msDS-LockoutThreshold'
+	EQUALITY integerMatch ORDERING integerOrderingMatch SYNTAX 1.3.6.1.4.1.1466.115.121.1.27 SINGLE-VALUE )
+
+attributetype ( 1.3.6.1.4.1.99999.2.24 NAME 'msDS-LockoutDuration'
+	EQUALITY integerMatch ORDERING integerOrderingMatch SYNTAX 1.3.6.1.4.1.1466.115.121.1.27 SINGLE-VALUE )
+
+attributetype ( 1.3.6.1.4.1.99999.2.25 NAME 'msDS-LockoutObservationWindow'
+	EQUALITY integerMatch ORDERING integerOrderingMatch SYNTAX 1.3.6.1.4.1.1466.115.121.1.27 SINGLE-VALUE )
+
+attributetype ( 1.3.6.1.4.1.99999.2.26 NAME 'trustDirection'
+	EQUALITY integerMatch ORDERING integerOrderingMatch SYNTAX 1.3.6.1.4.1.1466.115.121.1.27 SINGLE-VALUE )
+
+attributetype ( 1.3.6.1.4.1.99999.2.27 NAME 'trustType'
+	EQUALITY integerMatch ORDERING integerOrderingMatch SYNTAX 1.3.6.1.4.1.1466.115.121.1.27 SINGLE-VALUE )
+
+attributetype ( 1.3.6.1.4.1.99999.2.28 NAME 'trustAttributes'
+	EQUALITY integerMatch ORDERING integerOrderingMatch SYNTAX 1.3.6.1.4.1.1466.115.121.1.27 SINGLE-VALUE )
+
+attributetype ( 1.3.6.1.4.1.99999.2.29 NAME 'options'
+	EQUALITY integerMatch ORDERING integerOrderingMatch SYNTAX 1.3.6.1.4.1.1466.115.121.1.27 SINGLE-VALUE )
+
+attributetype ( 1.3.6.1.4.1.99999.2.30 NAME 'msDS-PasswordComplexityEnabled'
+	EQUALITY booleanMatch SYNTAX 1.3.6.1.4.1.1466.115.121.1.7 SINGLE-VALUE )
+
+attributetype ( 1.3.6.1.4.1.99999.2.31 NAME 'msDS-PasswordReversibleEncryptionEnabled'
+	EQUALITY booleanMatch SYNTAX 1.3.6.1.4.1.1466.115.121.1.7 SINGLE-VALUE )
+
+attributetype ( 1.3.6.1.4.1.99999.2.32 NAME 'unicodePwd'
+	EQUALITY octetStringMatch SYNTAX 1.3.6.1.4.1.1466.115.121.1.40 SINGLE-VALUE )
+
+attributetype ( 1.3.6.1.4.1.99999.2.33 NAME 'nTSecurityDescriptor'
+	EQUALITY octetStringMatch SYNTAX 1.3.6.1.4.1.1466.115.121.1.40 SINGLE-VALUE )
+
+attributetype ( 1.3.6.1.4.1.99999.2.34 NAME 'securityIdentifier'
+	EQUALITY octetStringMatch SYNTAX 1.3.6.1.4.1.1466.115.121.1.40 SINGLE-VALUE )
+
+attributetype ( 1.3.6.1.4.1.99999.2.100 NAME 'nsAccountLock'
+	EQUALITY caseIgnoreMatch SUBSTR caseIgnoreSubstringsMatch SYNTAX 1.3.6.1.4.1.1466.115.121.1.15 SINGLE-VALUE )
+
+objectclass ( 1.2.840.113556.1.5.9 NAME 'user' SUP organizationalPerson STRUCTURAL
+	MAY ( description $ objectSid $ objectGUID $ whenCreated $ whenChanged $ managedBy $ adminCount $ sAMAccountName $ userPrincipalName $ mail $ displayName $ givenName $ initials $ mobile $ company $ department $ manager $ directReports $ userAccountControl $ primaryGroupID $ sAMAccountType $ pwdLastSet $ lastLogon $ lastLogonTimestamp $ accountExpires $ badPwdCount $ logonCount $ lockoutTime $ servicePrincipalName $ thumbnailPhoto $ userPassword $ unicodePwd $ nTSecurityDescriptor $ msDS-ReplAttributeMetaData $ msDS-ReplValueMetaData $ msDS-ResultantPSO ) )
+
+objectclass ( 1.2.840.113556.1.3.30 NAME 'computer' SUP user STRUCTURAL
+	MAY ( operatingSystem $ dNSHostName ) )
+
+objectclass ( 1.2.840.113556.1.5.8 NAME 'group' SUP top STRUCTURAL MUST groupType
+	MAY ( cn $ member $ sAMAccountName $ sAMAccountType $ mail $ description $ objectSid $ objectGUID $ whenCreated $ whenChanged $ managedBy $ adminCount $ info $ nTSecurityDescriptor $ msDS-ReplAttributeMetaData $ msDS-ReplValueMetaData ) )
+
+objectclass ( 1.2.840.113556.1.5.67 NAME 'domainDNS' SUP domain STRUCTURAL
+	MAY ( gPLink $ maxPwdAge $ minPwdAge $ minPwdLength $ pwdHistoryLength $ pwdProperties $ lockoutThreshold $ lockoutDuration $ lockoutObservationWindow $ ms-DS-MachineAccountQuota $ fSMORoleOwner $ msDS-Behavior-Version $ description $ objectSid $ objectGUID $ whenCreated $ whenChanged $ managedBy $ adminCount ) )
+
+objectclass ( 1.2.840.113556.1.5.157 NAME 'groupPolicyContainer' SUP container STRUCTURAL
+	MAY ( displayName $ gPCFileSysPath $ versionNumber $ flags ) )
+
+objectclass ( 1.2.840.113556.1.5.76 NAME 'foreignSecurityPrincipal' SUP top STRUCTURAL MUST objectSid
+	MAY ( cn $ description $ objectSid $ objectGUID $ whenCreated $ whenChanged $ managedBy $ adminCount ) )
+
+objectclass ( 1.3.6.1.4.1.99999.1.1 NAME 'adtestCommon' AUXILIARY
+	MAY ( gPLink $ tombstoneLifetime $ fSMORoleOwner $ description $ objectSid $ objectGUID $ whenCreated $ whenChanged $ managedBy $ adminCount ) )
+
+objectclass ( 1.3.6.1.4.1.99999.3.1 NAME 'configuration' SUP top STRUCTURAL
+	MUST cn )
+
+objectclass ( 1.3.6.1.4.1.99999.3.2 NAME 'crossRefContainer' SUP top STRUCTURAL
+	MAY ( cn $ fSMORoleOwner $ msDS-EnabledFeature ) )
+
+objectclass ( 1.3.6.1.4.1.99999.3.3 NAME 'crossRef' SUP top STRUCTURAL
+	MUST cn MAY ( nCName $ nETBIOSName $ dnsRoot ) )
+
+objectclass ( 1.3.6.1.4.1.99999.3.4 NAME 'site' SUP top STRUCTURAL
+	MUST cn MAY description )
+
+objectclass ( 1.3.6.1.4.1.99999.3.5 NAME 'serversContainer' SUP top STRUCTURAL
+	MUST cn )
+
+objectclass ( 1.3.6.1.4.1.99999.3.6 NAME 'server' SUP top STRUCTURAL
+	MUST cn MAY description )
+
+objectclass ( 1.3.6.1.4.1.99999.3.7 NAME 'nTDSDSA' SUP top STRUCTURAL
+	MUST cn MAY options )
+
+objectclass ( 1.3.6.1.4.1.99999.3.9 NAME 'rIDManager' SUP top STRUCTURAL
+	MUST cn MAY fSMORoleOwner )
+
+objectclass ( 1.3.6.1.4.1.99999.3.10 NAME 'infrastructureUpdate' SUP top STRUCTURAL
+	MUST cn MAY fSMORoleOwner )
+
+objectclass ( 1.3.6.1.4.1.99999.3.11 NAME 'msDS-OptionalFeature' SUP top STRUCTURAL
+	MUST cn )
+
+objectclass ( 1.3.6.1.4.1.99999.3.12 NAME 'msDS-PasswordSettingsContainer' SUP top STRUCTURAL
+	MUST cn )
+
+objectclass ( 1.3.6.1.4.1.99999.3.13 NAME 'msDS-PasswordSettings' SUP top STRUCTURAL
+	MUST cn MAY ( description $ msDS-PasswordSettingsPrecedence $ msDS-MinimumPasswordLength $ msDS-PasswordHistoryLength $ msDS-PasswordComplexityEnabled $ msDS-PasswordReversibleEncryptionEnabled $ msDS-MaximumPasswordAge $ msDS-MinimumPasswordAge $ msDS-LockoutThreshold $ msDS-LockoutDuration $ msDS-LockoutObservationWindow $ msDS-PSOAppliesTo ) )
+
+objectclass ( 1.3.6.1.4.1.99999.3.14 NAME 'trustedDomain' SUP top STRUCTURAL
+	MUST cn MAY ( trustPartner $ flatName $ trustDirection $ trustType $ trustAttributes $ securityIdentifier ) )
+
+objectclass ( 1.3.6.1.4.1.99999.3.100 NAME 'adtestAccountLock' AUXILIARY
+	MAY nsAccountLock )

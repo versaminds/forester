@@ -1,0 +1,78 @@
+# SPDX-License-Identifier: LicenseRef-PolyForm-Shield-1.0.0
+# Copyright © 2026 VersaMinds
+name: Tests
+
+# Every check that runs without an Active Directory domain controller
+# (scripts/test-all.sh): unit and integration tests against Apple's slapd, the
+# release builds of both variants, the app driving itself through its screens
+# and controls, and the App Store variant in its sandbox. On every push to
+# main and every pull request; the weekly run and the release call it too,
+# with the big-directory part.
+#
+# On GitHub's macOS runners: free for a public repository; for a private one
+# their minutes count ten times.
+
+on:
+  push:
+    branches: [main]
+    paths-ignore: ['site/**', '*.md', 'docs/**']
+  pull_request:
+    paths-ignore: ['site/**', '*.md', 'docs/**']
+  workflow_dispatch:
+    inputs:
+      performance:
+        description: Also measure the app against a directory of 50,000 users
+        type: boolean
+        default: false
+  workflow_call:
+    inputs:
+      performance:
+        type: boolean
+        default: false
+      ref:
+        description: The commit or branch to test (the caller's by default)
+        type: string
+        default: ''
+
+concurrency:
+  # A newer push to a pull request makes an older run's result moot. Called
+  # by the weekly check or a release, github.workflow is the caller's, so
+  # those runs are a group of their own and never cancelled by a push.
+  group: tests-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Test on macOS
+    runs-on: macos-26
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.ref || '' }}
+          persist-credentials: false
+
+      - name: Use the newest Xcode
+        run: scripts/ci/select-xcode.sh
+
+      - name: Test
+        env:
+          FORESTER_TEST_OUTPUT: ${{ runner.temp }}/forester-test
+          # A runner's virtual machine has three cores of an M1: the window
+          # may take longer to answer than on a Mac on someone's desk.
+          FORESTER_STALL_LIMIT_MS: '1000'
+        run: scripts/test-all.sh ${{ inputs.performance && '--performance' || '' }}
+
+      # What the app showed and logged, to see why a check failed, and the
+      # performance figures of every run that measured them.
+      - name: Keep the logs and pictures
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: forester-test-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/forester-test
+          retention-days: 14
+          if-no-files-found: ignore

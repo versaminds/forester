@@ -1,0 +1,5 @@
+# Forester's page on the Mac App Store. Every Download button links to
+# /app-store, so the address lives here alone: put Forester's Apple ID from
+# App Store Connect (App Information › Apple ID) in place of the placeholder
+# before the site goes live. scripts/check-release.sh refuses the placeholder.
+/app-store  https://apps.apple.com/app/forester-ldap-browser/idAPPLE_ID  302

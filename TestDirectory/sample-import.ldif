@@ -1,0 +1,76 @@
+version: 1
+
+# SPDX-License-Identifier: LicenseRef-PolyForm-Shield-1.0.0
+# Copyright © 2026 VersaMinds
+# Sample for testing Import LDIF against the test directory.
+# Eight records: four adds, a modify, a rename, a modify that fails on purpose,
+# and a delete. Restart TestDirectory/start.sh to undo it all.
+
+# A plain entry (no changetype): imported as an add.
+dn: OU=Imported,OU=Corp,DC=corp,DC=example
+objectClass: top
+objectClass: organizationalUnit
+ou: Imported
+description: Created by sample-import.ldif
+
+dn: CN=Ada Import,OU=Imported,OU=Corp,DC=corp,DC=example
+objectClass: top
+objectClass: person
+objectClass: organizationalPerson
+objectClass: user
+cn: Ada Import
+sn: Import
+givenName: Ada
+displayName: Ada Import
+sAMAccountName: ada.import
+userPrincipalName: ada.import@corp.example
+userAccountControl: 546
+
+dn: CN=Grace Import,OU=Imported,OU=Corp,DC=corp,DC=example
+objectClass: top
+objectClass: person
+objectClass: organizationalPerson
+objectClass: user
+cn: Grace Import
+sn: Import
+givenName: Grace
+sAMAccountName: grace.import
+userAccountControl: 546
+description:: SW1wb3J0ZWQgd2l0aCBhIGJhc2U2NCB2YWx1ZTogTHXEjWnEhw==
+
+# A change record that adds.
+dn: CN=GG-Imported,OU=Imported,OU=Corp,DC=corp,DC=example
+changetype: add
+objectClass: top
+objectClass: group
+cn: GG-Imported
+sAMAccountName: GG-Imported
+groupType: -2147483646
+member: CN=Ada Import,OU=Imported,OU=Corp,DC=corp,DC=example
+member: CN=Grace Import,OU=Imported,OU=Corp,DC=corp,DC=example
+
+# Changes to an existing entry.
+dn: CN=Pieter Van Damme,OU=Engineering,OU=Users,OU=Corp,DC=corp,DC=example
+changetype: modify
+replace: title
+title: VP Engineering
+-
+add: mobile
+mobile: +32 470 00 00 00
+-
+
+dn: CN=Grace Import,OU=Imported,OU=Corp,DC=corp,DC=example
+changetype: modrdn
+newrdn: CN=Grace Hopper Import
+deleteoldrdn: 1
+
+# Fails on purpose: gidNumber is not allowed on a user in this schema.
+# With "Continue after an error" on, the import carries on past it.
+dn: CN=Ada Import,OU=Imported,OU=Corp,DC=corp,DC=example
+changetype: modify
+add: gidNumber
+gidNumber: 5000
+-
+
+dn: CN=GG-Empty-Legacy,OU=Groups,OU=Corp,DC=corp,DC=example
+changetype: delete

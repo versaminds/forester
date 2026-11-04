@@ -1,0 +1,15 @@
+# SPDX-License-Identifier: LicenseRef-PolyForm-Shield-1.0.0
+# Copyright © 2026 VersaMinds
+# The actions the workflows use, pinned to commits, kept current weekly; the
+# Tests workflow checks each pull request. Sparkle is updated by the weekly
+# workflow, which also tests the app with it.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    groups:
+      actions:
+        patterns: ['*']
