@@ -2,4 +2,4 @@
 # /app-store, so the address lives here alone: put Forester's Apple ID from
 # App Store Connect (App Information › Apple ID) in place of the placeholder
 # before the site goes live. scripts/check-release.sh refuses the placeholder.
-/app-store  https://apps.apple.com/app/forester-ldap-browser/idAPPLE_ID  302
+/app-store  https://apps.apple.com/app/forester-ldap-browser/id6830866952  302
