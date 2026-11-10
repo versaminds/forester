@@ -24,8 +24,9 @@ enum ToolbarFit {
     /// The middle column holds back and forward, the title, Browse and Search
     /// and Server Info. AppKit keeps 158 points for the title however short it
     /// is, so this is 415 points as measured for any title up to about 156
-    /// points wide, and a little room; 434 points in glass.
-    static var contentMinimum: CGFloat { glass ? 440 : 420 }
+    /// points wide, and a little room; in glass 434 points on macOS 27 and
+    /// 442 on macOS 26, whose glass items are wider.
+    static var contentMinimum: CGFloat { glass ? 450 : 420 }
 
     /// With the sidebar hidden, the window's buttons and the sidebar button
     /// are in the middle column's part of the toolbar too.
@@ -40,8 +41,9 @@ enum ToolbarFit {
         width - (glass ? 300 : 280) - (sidebarShown ? 0 : windowButtons)
     }
 
-    /// The close, minimise and zoom buttons and the sidebar button.
-    static var windowButtons: CGFloat { glass ? 140 : 130 }
+    /// The close, minimise and zoom buttons and the sidebar button: 144 points
+    /// on macOS 26, with the middle column's own items, beyond its minimum.
+    static var windowButtons: CGFloat { glass ? 150 : 130 }
 
     /// From macOS 26, an app linked with its SDK or a later one draws its
     /// toolbar items as glass capsules, which take more room than the

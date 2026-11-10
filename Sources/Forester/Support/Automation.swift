@@ -303,19 +303,9 @@ enum Automation {
             }
         }
         if ProcessInfo.processInfo.environment["FORESTER_LAYOUT_LOG"] == "1" { log("layout dump \(what)"); dump() }
-        // macOS 26 draws the tracking separator of a glass toolbar right of
-        // the split view's divider it follows: 2 points with the sidebar
-        // shown, 6 with it hidden (seen on GitHub's macOS 26 runners; macOS 27
-        // lines them up). AppKit places it, not the app, so up to 8 points is
-        // allowed there and nowhere else, and each gap is logged.
-        let os = ProcessInfo.processInfo.operatingSystemVersion.majorVersion
-        let tolerance: CGFloat = ToolbarFit.glass && os == 26 ? 8 : 1
         for separator in separators {
             let x = frame(separator).minX
-            if let gap = dividers.map({ abs($0 - x) }).min(), gap > 1, gap <= tolerance {
-                log("noted: macOS \(os) draws the toolbar's divider \(gap) points from the column line (\(what))")
-            }
-            guard dividers.contains(where: { abs($0 - x) <= tolerance }) else {
+            guard dividers.contains(where: { abs($0 - x) <= 1 }) else {
                 dump()
                 throw AutomationError("check failed: the toolbar's divider is at \(x), the column line at \(dividers.map { "\($0)" }.joined(separator: ", ")) (\(what))")
             }
