@@ -562,7 +562,11 @@ and `ui`), or pass them after the output folder:
 `scripts/automation.sh /tmp/forester-shots ui`.
 `marketing` is not part of the default run: it takes the pictures for the
 website and the App Store (`M-…`, 2880 by 1800, light and dark), which
-`scripts/make-site-images.sh` turns into the website's images.
+`scripts/make-site-images.sh` turns into the website's images. Nor is
+`sample`, which needs the internet: from an empty sidebar it presses Try a
+Sample Directory and checks that Forum Systems' public test server is added
+once and opens read-only, without signing in
+(`scripts/automation.sh /tmp/forester-shots sample`).
 
 ### A big directory
 

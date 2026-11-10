@@ -211,6 +211,17 @@ final class AppModel {
         }
     }
 
+    /// Opens the sample directory, adding it first unless it is there already.
+    func trySampleDirectory() {
+        let profile = store.profiles.first(where: \.isSample) ?? {
+            let sample = ConnectionProfile.sample
+            store.save(sample)
+            return sample
+        }()
+        requestedSelection = profile.id
+        if let session = session(for: profile.id), !session.phase.isConnected { session.connect() }
+    }
+
     func save(_ profile: ConnectionProfile, password: String?) {
         store.save(profile)
         if profile.authentication == .simple, let password, !password.isEmpty {
@@ -286,6 +297,7 @@ struct AppCommands: Commands {
 
         CommandGroup(replacing: .help) {
             Button("Forester Website") { NSWorkspace.shared.open(ForesterInfo.website) }
+            Button("Try a Sample Directory") { model.trySampleDirectory() }
             Button("Copy Diagnostics") { Diagnostics.copy(model, session: session) }
             Button("VersaMinds Website") { NSWorkspace.shared.open(ForesterInfo.companyWebsite) }
             Divider()

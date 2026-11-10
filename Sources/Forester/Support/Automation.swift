@@ -26,9 +26,9 @@ enum Automation {
     /// toolbar at many window and column sizes), entrysheets (every entry
     /// sheet opened as a click opens it), sheets (every sheet and form, light
     /// and dark) and ui (real clicks and typing through the app's own
-    /// controls). All five by default. Also: marketing (the website's
-    /// pictures), ad (against Active Directory) and performance (against a
-    /// big test directory).
+    /// controls). All five by default. Also: sample (Try a Sample Directory,
+    /// over the internet), marketing (the website's pictures), ad (against
+    /// Active Directory) and performance (against a big test directory).
     static var parts: Set<String> {
         let value = ProcessInfo.processInfo.environment["FORESTER_AUTOMATION_ONLY"] ?? "walkthrough,layout,entrysheets,sheets,ui"
         return Set(value.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) })
@@ -48,6 +48,7 @@ enum Automation {
                 if parts.contains("entrysheets") { try await entrySheets(model, output: output) }
                 if parts.contains("sheets") { try await sheetGallery(model, output: output) }
                 if parts.contains("ui") { try await UITour.run(model, output: output) }
+                if parts.contains("sample") { try await sampleDirectory(model, output: output) }
                 if parts.contains("marketing") { try await marketing(model, output: output) }
                 if parts.contains("ad") { try await ADChecks.run(model, output: output) }
                 if parts.contains("performance") { try await PerformanceChecks.run(model, output: output) }
@@ -302,9 +303,15 @@ enum Automation {
             }
         }
         if ProcessInfo.processInfo.environment["FORESTER_LAYOUT_LOG"] == "1" { log("layout dump \(what)"); dump() }
+        // macOS 26 draws the tracking separator of a glass toolbar 2 points
+        // right of the split view's divider it follows (seen on GitHub's
+        // macOS 26 runners; macOS 27 lines them up). AppKit places it, not
+        // the app, so that much is allowed there and nowhere else.
+        let os = ProcessInfo.processInfo.operatingSystemVersion.majorVersion
+        let tolerance: CGFloat = ToolbarFit.glass && os == 26 ? 2.5 : 1
         for separator in separators {
             let x = frame(separator).minX
-            guard dividers.contains(where: { abs($0 - x) <= 1 }) else {
+            guard dividers.contains(where: { abs($0 - x) <= tolerance }) else {
                 dump()
                 throw AutomationError("check failed: the toolbar's divider is at \(x), the column line at \(dividers.map { "\($0)" }.joined(separator: ", ")) (\(what))")
             }
@@ -446,6 +453,43 @@ enum Automation {
             }
         }
         NSApp.appearance = nil
+    }
+
+    // MARK: Sample directory
+
+    /// The way in before there is a directory of one's own: from an empty
+    /// sidebar, Try a Sample Directory adds Forum Systems' public test server
+    /// once and opens it, read-only and without signing in. It needs the
+    /// internet, so it is not part of the default run:
+    /// FORESTER_AUTOMATION_ONLY=sample, with a FORESTER_PROFILE_DIR that
+    /// holds no connections.
+    static func sampleDirectory(_ model: AppModel, output: URL) async throws {
+        guard model.store.profiles.isEmpty else {
+            throw AutomationError("the sample part starts with no connections: point FORESTER_PROFILE_DIR at an empty folder")
+        }
+        let window = try require(mainWindow())
+        try await settle()
+        try snapshot("S-no-connections", output)
+        try UIDriver.click(try UIDriver.button("Try a Sample Directory", in: window), "Try a Sample Directory")
+        try await waitFor("the sample directory added") { model.store.profiles.count == 1 }
+        let profile = model.store.profiles[0]
+        guard profile.isSample, profile.readOnly, profile.authentication == .anonymous, !profile.savePassword else {
+            throw AutomationError("check failed: the sample directory was added as \(profile.endpoint), read-only \(profile.readOnly), \(profile.authentication)")
+        }
+        let session = try require(model.session(for: profile.id))
+        try await waitFor("the sample directory connected", timeout: 30) {
+            if case .failed = session.phase { return true }
+            return session.phase.isConnected
+        }
+        if case .failed(let message) = session.phase { throw AutomationError("the sample directory did not connect: \(message)") }
+        try await waitFor("the sample directory's entries") { session.inspector.entry != nil && !session.tree.roots.isEmpty }
+        try await settle()
+        try snapshot("S-sample-directory", output)
+        // Asking again opens the same connection rather than adding another.
+        model.trySampleDirectory()
+        try await settle()
+        guard model.store.profiles.count == 1 else { throw AutomationError("check failed: a second Try a Sample Directory added another connection") }
+        log("verified: Try a Sample Directory adds the public test directory once and opens it read-only, without signing in")
     }
 
     // MARK: Website and App Store pictures

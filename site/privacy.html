@@ -38,7 +38,7 @@
 
 <main id="main" class="page">
   <h1>Privacy</h1>
-  <p class="updated">Last updated 4 November 2026</p>
+  <p class="updated">Last updated 11 November 2026</p>
 
   <p>The short version: Forester collects nothing about you or your directory. It has no account, no analytics and no crash reporting, and it sends nothing to VersaMinds.</p>
 
@@ -59,6 +59,7 @@
     <li><strong>Passwords</strong> are saved only in the macOS keychain, while "Remember the password in the keychain" is on (it is, unless you turn it off), and only for the server they were saved for. They are never included when you export connections.</li>
     <li><strong>Kerberos</strong>: when you sign in with a Kerberos ticket, Forester uses the ticket macOS already holds. It never sees or stores a password for it.</li>
     <li><strong>Files you export</strong> (LDIF, CSV, connection files and import logs) are written only where you choose to save them.</li>
+    <li><strong>Sample directory</strong>: Try a Sample Directory connects to ldap.forumsys.com, a public test directory that Forum Systems runs, only when you choose it. Forester reads it anonymously and sends it nothing about you; like any server, it sees your IP address.</li>
     <li><strong>Diagnostics</strong>: Help › Copy Diagnostics copies a summary to your clipboard, without host names, user names or passwords. It goes nowhere unless you paste it somewhere yourself.</li>
     <li><strong>Updates</strong>: the Mac App Store version is updated by the App Store and checks nothing itself. A copy from outside the App Store reads the list of releases on this website (forester.versaminds.live/updates/) when you choose Check for Updates, or once a day if you say yes when it asks, and downloads a new version from GitHub. Like any request, these show Cloudflare and GitHub your IP address and Forester's version; nothing else is sent, and every update is checked against VersaMinds' signature before it is installed.</li>
     <li><strong>Links in the Help menu</strong> open this website, versaminds.live and the licence on polyformproject.org in your web browser.</li>

@@ -31,7 +31,10 @@ struct ContentView: View {
                 if let session {
                     BrowserColumn(session: session, editing: $editing)
                 } else {
-                    NoConnectionView(hasProfiles: !model.store.profiles.isEmpty) { editing = ConnectionProfile() }
+                    NoConnectionView(hasProfiles: !model.store.profiles.isEmpty, add: { editing = ConnectionProfile() },
+                                     trySample: { model.trySampleDirectory() })
+                        // The whole column, so the line below puts itself under the toolbar.
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
             }
             .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { middleWidth = $0 }
@@ -114,15 +117,21 @@ extension ContentView {
 struct NoConnectionView: View {
     let hasProfiles: Bool
     let add: () -> Void
+    let trySample: () -> Void
 
     var body: some View {
         ContentUnavailableView {
             Label(hasProfiles ? "Choose a Connection" : "No Connections", systemImage: "server.rack")
         } description: {
-            Text(hasProfiles ? "Pick a server in the sidebar." : "Add an LDAP server or Active Directory domain controller to start browsing.")
+            Text(hasProfiles ? "Pick a server in the sidebar."
+                 : "Add an LDAP server or Active Directory domain controller to start browsing, or look around a public test directory first.")
         } actions: {
             Button("New Connection…", action: add)
                 .buttonStyle(.borderedProminent)
+            if !hasProfiles {
+                Button("Try a Sample Directory", action: trySample)
+                    .help("Opens a public, read-only test directory run by Forum Systems (ldap.forumsys.com), without signing in.")
+            }
         }
     }
 }

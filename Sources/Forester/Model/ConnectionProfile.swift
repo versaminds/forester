@@ -42,6 +42,26 @@ struct ConnectionProfile: Codable, Identifiable, Hashable {
 
     var displayName: String { name.isEmpty ? (host.isEmpty ? "New connection" : host) : name }
 
+    /// Forum Systems' public LDAP test server: a few people and groups that
+    /// anyone may read, so Forester can be tried before there is a directory
+    /// of one's own to point it at. It offers no TLS; nothing is sent to it
+    /// but anonymous searches.
+    static let sampleHost = "ldap.forumsys.com"
+
+    static var sample: ConnectionProfile {
+        var profile = ConnectionProfile()
+        profile.name = "Sample directory"
+        profile.host = sampleHost
+        profile.port = 389
+        profile.security = .none
+        profile.authentication = .anonymous
+        profile.savePassword = false
+        profile.baseDN = "dc=example,dc=com"
+        return profile
+    }
+
+    var isSample: Bool { host.caseInsensitiveCompare(Self.sampleHost) == .orderedSame }
+
     var endpoint: String {
         let scheme = security == .ldaps ? "ldaps" : "ldap"
         return "\(scheme)://\(host):\(port)"

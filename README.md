@@ -136,7 +136,9 @@ its children or a whole subtree, and CSV or LDIF export of search results.
 name), a monitor for OpenLDAP's `cn=Monitor` and 389 Directory Server's
 `cn=monitor` and replication agreements, and a schema browser.
 
-**Connections.** Sign in with a name and password, anonymously, or with
+**Connections.** No directory yet? **Try a Sample Directory** (in the empty
+window, or the Help menu) opens a public, read-only test directory that Forum
+Systems runs, without signing in. Sign in with a name and password, anonymously, or with
 **Kerberos**: the ticket the Mac already has (Ticket Viewer, kinit, single
 sign-on), over StartTLS or LDAPS with the TLS channel bound into the exchange,
 so no password is typed or kept. Saved with keychain passwords, imported and exported as
