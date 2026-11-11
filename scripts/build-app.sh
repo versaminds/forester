@@ -7,9 +7,13 @@
 #   scripts/build-app.sh universal  Apple silicon and Intel in one binary
 #
 # FORESTER_APP_STORE=1 builds the Mac App Store variant instead, into
-# build/AppStore (scripts/make-appstore.sh signs and packages it), and
-# FORESTER_BUILD sets the build number, which must grow with every upload of
-# the same version (the version by default).
+# build/AppStore (scripts/make-appstore.sh signs and packages it).
+#
+# The build number (CFBundleVersion) is the time of the build in UTC,
+# YYYYMMDD.HHMM, unless FORESTER_BUILD sets one. On the Mac, App Store
+# Connect takes at most three numbers there and wants every upload higher
+# than any before, across versions; the time always is, and Sparkle compares
+# it the same way.
 #
 # The download updates itself through Sparkle once Resources/sparkle-public-key
 # holds the public half of the key its releases are signed with (made once
@@ -28,7 +32,7 @@ ROOT=${0:A:h:h}
 cd "$ROOT"
 [[ -f "$ROOT/VERSION" ]] || { print -u2 "build-app: VERSION is missing."; exit 1; }
 VERSION=$(tr -d '[:space:]' < "$ROOT/VERSION")
-BUILD=${FORESTER_BUILD:-$VERSION}
+BUILD=${FORESTER_BUILD:-$(date -u +%Y%m%d.%H%M)}
 
 if [[ "${1:-}" == "universal" ]]; then
   ARGS=(-c release --arch arm64 --arch x86_64)

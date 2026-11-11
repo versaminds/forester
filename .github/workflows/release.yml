@@ -129,16 +129,13 @@ jobs:
           PROFILE: ${{ steps.signing.outputs.profile }}
           ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
           ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
-          # Every upload needs a build number of its own: a second attempt
-          # of this run may follow one that uploaded.
-          FORESTER_BUILD: ${{ github.run_attempt == 1 && needs.due.outputs.version || format('{0}.{1}', needs.due.outputs.version, github.run_attempt) }}
         run: |
           scripts/make-appstore.sh "$PROFILE"
           # The form both the runners' Xcode and newer ones accept; the key is
           # found by its id in ~/.appstoreconnect/private_keys (signing.sh).
           xcrun altool --upload-app -f "build/AppStore/Forester-$VERSION.pkg" -t macos \
             --apiKey "$ASC_KEY_ID" --apiIssuer "$ASC_ISSUER_ID"
-          echo "- Uploaded to App Store Connect: version $VERSION, build $FORESTER_BUILD" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Uploaded to App Store Connect: version $VERSION, build $(plutil -extract CFBundleVersion raw build/AppStore/Forester.app/Contents/Info.plist)" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Build the download
         if: steps.signing.outputs.download == 'true'

@@ -9,9 +9,9 @@
 #
 # The first needs the "Apple Distribution" and "Mac Installer Distribution"
 # certificates in the keychain, and the profile made for the App ID
-# live.versaminds.Forester in the developer portal. FORESTER_BUILD sets the
-# build number: every upload needs a higher one than the last, even for the
-# same version (1.0.0, then 1.0.0.1, 1.0.0.2 and so on).
+# live.versaminds.Forester in the developer portal. The build number is the
+# time of the build (scripts/build-app.sh), so every upload has a higher one
+# than the last.
 #
 # --sandbox-test signs the same build with this Mac's "Apple Development"
 # certificate and no profile, to try the sandbox here. It cannot be uploaded.

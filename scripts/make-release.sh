@@ -155,7 +155,7 @@ swift "$ROOT/scripts/check-update-signature.swift" "$DMG" "$ED_SIGNATURE" "$(tr 
 BUILD_NUMBER=$(/usr/libexec/PlistBuddy -c "Print :CFBundleVersion" "$APP/Contents/Info.plist")
 MINIMUM=$(/usr/libexec/PlistBuddy -c "Print :LSMinimumSystemVersion" "$APP/Contents/Info.plist")
 APPCAST="$ROOT/site/updates/appcast.xml"
-grep -q "<sparkle:version>$BUILD_NUMBER</sparkle:version>" "$APPCAST" && fail "the update feed already lists build $BUILD_NUMBER; raise VERSION or FORESTER_BUILD."
+grep -q "<sparkle:version>$BUILD_NUMBER</sparkle:version>" "$APPCAST" && fail "the update feed already lists build $BUILD_NUMBER; build again."
 ITEM=$(mktemp)
 cat > "$ITEM" <<XML
     <item>

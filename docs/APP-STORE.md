@@ -48,9 +48,10 @@ details**:
 Reviewers must be able to use the app, and Forester needs a directory to
 connect to. Forum Systems has run a public, read-only OpenLDAP test server
 for years, `ldap.forumsys.com`, and the review notes below send reviewers
-there: plain LDAP on port 389, signed in as `cn=read-only-admin,dc=example,dc=com`
-with the password `password`, about twenty people and groups. Nothing of
-ours has to stay up for it; `scripts/check-release.sh` checks that it answers.
+there through Try a Sample Directory (in the empty window and the Help menu):
+plain LDAP on port 389, read anonymously, about twenty people and groups.
+Nothing of ours has to stay up for it; `scripts/check-release.sh` checks
+that it answers.
 
 It cannot show editing, TLS or Active Directory. Should App Review ask to see
 those, `demo-server/` runs a directory of our own instead: the test
@@ -130,8 +131,9 @@ scripts/make-appstore.sh ~/Downloads/Forester_App_Store.provisionprofile
 It builds the App Store variant for Apple silicon and Intel, signs it with
 Apple Distribution and the profile, checks that it is sandboxed and built with
 this Mac's SDK, and writes `build/AppStore/Forester-<version>.pkg` signed with
-Mac Installer Distribution. Every upload needs a higher build number than the
-last, even for the same version: `FORESTER_BUILD=1.0.0.1 scripts/make-appstore.sh …`.
+Mac Installer Distribution. Every upload needs a higher build number than any
+before, across versions, and at most three numbers: the build number is the
+time of the build in UTC (`20261112.0930`), so a new build always has one.
 
 Upload it with **Transporter** (free in the Mac App Store): sign in with the
 developer account, drag the .pkg in, **Deliver**. Processing takes 10 to 30
@@ -214,17 +216,13 @@ required**: off (Forester has no account; the test server's sign-in is in the no
 
 **Notes**:
 
-> Forester is a client for LDAP directory servers, such as Microsoft Active Directory, that organisations run on their own networks. To review it, please connect to the public LDAP test server that Forum Systems runs for this purpose:
+> Forester is a client for LDAP directory servers, such as Microsoft Active Directory, that organisations run on their own networks. No account or sign-in is needed to review it:
 >
-> 1. Click + at the bottom of the sidebar (or File › New Connection).
-> 2. Host: ldap.forumsys.com
-> 3. Security: None (plain LDAP), port 389. The test server offers no TLS, so Forester warns that the connection is unencrypted.
-> 4. Sign in: Name and password.
->    User: cn=read-only-admin,dc=example,dc=com
->    Password: password
-> 5. Click Add, then Connect.
+> 1. Open Forester. The empty window offers Try a Sample Directory (it is also in the Help menu).
+> 2. Click it. Forester connects to a public, read-only test directory that Forum Systems runs for this purpose (ldap.forumsys.com), without signing in, and shows its people (such as einstein) and groups (such as scientists).
+> 3. Choose any entry for its overview, attributes and LDIF. Click Search in the toolbar and search with a filter such as (objectClass=person).
 >
-> The directory holds a few people (such as uid=einstein) and groups (such as ou=scientists). Every connection in Forester is read-only by design until the person allows changes with the Read-only button in the toolbar; this test server is read-only itself, so a change sent to it is refused with the server's own message. Active Directory features and Kerberos sign-in need an organisation's own domain and cannot be tried here.
+> Every connection in Forester is read-only until the person allows changes with the Read-only button in the toolbar; this test directory is read-only itself, so a change sent to it is refused with the server's own message. The test server offers no TLS, so the status bar says the connection is unencrypted. Active Directory features and Kerberos sign-in need an organisation's own domain and cannot be tried here.
 >
 > Forester collects no data and has no account. Its source code is public under the PolyForm Shield License; VersaMinds holds the copyright to all of it.
 >

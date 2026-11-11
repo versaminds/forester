@@ -94,9 +94,11 @@ no warning beyond "downloaded from the internet".
 
 ### Version numbers
 
-`VERSION` holds the version shown in About Forester (`CFBundleShortVersionString`
-and `CFBundleVersion`). Raise it before each release. The App Store requires
-`CFBundleVersion` to grow with every upload.
+`VERSION` holds the version shown in About Forester
+(`CFBundleShortVersionString`). Raise it before each release. The build
+number (`CFBundleVersion`) is the time of the build in UTC, `YYYYMMDD.HHMM`:
+on the Mac, App Store Connect takes at most three numbers there and wants
+every upload higher than any before, across versions.
 
 ### GitHub
 

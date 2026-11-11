@@ -566,7 +566,8 @@ website and the App Store (`M-…`, 2880 by 1800, light and dark), which
 `sample`, which needs the internet: from an empty sidebar it presses Try a
 Sample Directory and checks that Forum Systems' public test server is added
 once and opens read-only, without signing in
-(`scripts/automation.sh /tmp/forester-shots sample`).
+(`scripts/automation.sh /tmp/forester-shots sample`, and inside the App
+Store's sandbox with `scripts/automation-sandboxed.sh sample`).
 
 ### A big directory
 

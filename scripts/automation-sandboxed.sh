@@ -42,6 +42,9 @@ SIGNER=${SIGNER:--}
 codesign --force --sign "$SIGNER" --entitlements "$ROOT/Resources/AppStore.entitlements" "$APP"
 
 CONTAINER="$HOME/Library/Containers/$ID/Data/tmp"
-FORESTER_AUTOMATION="$CONTAINER/shots" FORESTER_AUTOMATION_ONLY="$PARTS" FORESTER_PROFILE_DIR="$CONTAINER/profiles" \
+# The connections stay between runs; the sample part starts from none.
+PROFILES="$CONTAINER/profiles"
+[[ ",$PARTS," == *,sample,* ]] && PROFILES="$CONTAINER/profiles-sample-$(date +%s)"
+FORESTER_AUTOMATION="$CONTAINER/shots" FORESTER_AUTOMATION_ONLY="$PARTS" FORESTER_PROFILE_DIR="$PROFILES" \
   FORESTER_TEST_PASSWORD=${FORESTER_TEST_PASSWORD:-secret} FORESTER_SAMPLE_LDIF="$(< "$ROOT/TestDirectory/sample-import.ldif")" \
   "$APP/Contents/MacOS/Forester"

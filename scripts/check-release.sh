@@ -59,8 +59,8 @@ check "the Download buttons lead to Forester on the Mac App Store" "! grep -q AP
   "site/_redirects still has the placeholder: put Forester's Apple ID from App Store Connect in it"
 
 print "\nThe directory App Review signs in to (docs/APP-STORE.md step 3)"
-check "$REVIEW_HOST answers and lets the review account read" \
-  "ldapsearch -x -o nettimeout=10 -H ldap://$REVIEW_HOST:389 -D cn=read-only-admin,dc=example,dc=com -w password -b dc=example,dc=com -s one -LLL dn | grep -q '^dn: uid='" \
+check "$REVIEW_HOST answers and can be read anonymously" \
+  "ldapsearch -x -o nettimeout=10 -H ldap://$REVIEW_HOST:389 -b dc=example,dc=com -s one -LLL dn | grep -q '^dn: uid='" \
   "$REVIEW_HOST does not answer: name the demo directory of our own in the review notes instead (docs/APP-STORE.md step 3)"
 
 print
