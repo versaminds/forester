@@ -370,7 +370,10 @@ enum Automation {
             try await waitFor("sheet \(name)") { window.attachedSheet != nil }
             try await settle(1.0)
             let shown = try require(window.attachedSheet)
-            guard shown.frame.height > 80, shown.frame.height < window.frame.height else {
+            // A tall form fills a short window and scrolls inside it (on
+            // GitHub's runners the window is under 700 points tall), so the
+            // window's own height is allowed.
+            guard shown.frame.height > 80, shown.frame.height <= window.frame.height + 0.5 else {
                 throw AutomationError("check failed: the \(name) sheet is \(Int(shown.frame.height)) points tall")
             }
             try write(shown, name: "E-\(name)", output: output)
