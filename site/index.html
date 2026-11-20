@@ -271,7 +271,7 @@
       <div class="card">
         <div class="icon"><svg aria-hidden="true"><use href="#i-eye-off"/></svg></div>
         <h3>Nothing phones home</h3>
-        <p>No account, no analytics, no crash reports. Forester talks only to the directory servers you add, and to their domain controllers when you ask for an account's status on each. The Mac App Store keeps it up to date.</p>
+        <p>No account, no analytics, no crash reports. Forester talks only to the directory servers you add, and to their domain controllers when you ask for an account's status on each. The App Store version leaves updates to the App Store, and the download asks before it ever looks for one.</p>
       </div>
       <div class="card">
         <div class="icon"><svg aria-hidden="true"><use href="#i-key"/></svg></div>
@@ -327,7 +327,11 @@ cd forester &amp;&amp; scripts/build-app.sh</div>
       </details>
       <details>
         <summary>How is Forester updated?</summary>
-        <p>Through the Mac App Store, like your other apps. Turn on automatic updates in the App Store's settings and each new version arrives by itself.</p>
+        <p>From the Mac App Store, like your other apps: turn on automatic updates in the App Store's settings and each new version arrives by itself. The download from GitHub updates itself once you allow it, and with Homebrew <code>brew upgrade</code> works too.</p>
+      </details>
+      <details>
+        <summary>Can I try it without a directory of my own?</summary>
+        <p>Yes. Choose Try a Sample Directory in the empty window or the Help menu. Forester opens a public, read-only test directory that Forum Systems runs, without signing in, so you can look around before you point it at your own.</p>
       </details>
       <details>
         <summary>Can I install it with Homebrew, or without the App Store?</summary>

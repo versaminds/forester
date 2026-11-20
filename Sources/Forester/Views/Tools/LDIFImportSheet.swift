@@ -41,6 +41,11 @@ struct LDIFImportSheet: View {
     @State private var checking = false
     @State private var records: [LDIFRecord] = []
     @State private var parseError: String?
+    /// Read and parsed away from the main thread: a file of tens of
+    /// thousands of entries takes seconds. A newer file or choice replaces
+    /// the run in progress, whose answer is then dropped.
+    @State private var parsing = false
+    @State private var parseRun = 0
     @State private var continueOnError = true
     @State private var existing: ExistingEntries = .skip
     @State private var writeLog = false
@@ -78,10 +83,15 @@ struct LDIFImportSheet: View {
                                     .lineLimit(1).truncationMode(.middle)
                                     .help(file?.path ?? "")
                                 Spacer()
-                                Button(file == nil ? "Choose File…" : "Choose Another…", action: choose).disabled(running || checking)
+                                Button(file == nil ? "Choose File…" : "Choose Another…", action: choose).disabled(running || checking || parsing)
                             }
                         }
-                        if let parseError {
+                        if parsing {
+                            HStack {
+                                ProgressView().controlSize(.small)
+                                Text("Reading the file…").foregroundStyle(.secondary)
+                            }
+                        } else if let parseError {
                             Label { Text(parseError).textSelection(.enabled) } icon: {
                                 Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.red)
                             }
@@ -175,7 +185,7 @@ struct LDIFImportSheet: View {
                 if !finished {
                     Button("Import \(records.count) Record\(records.count == 1 ? "" : "s")", action: checkThenStart)
                         .keyboardShortcut(.defaultAction)
-                        .disabled(records.isEmpty || !session.canWrite)
+                        .disabled(records.isEmpty || parsing || !session.canWrite)
                 }
             }
         }
@@ -278,33 +288,58 @@ struct LDIFImportSheet: View {
         log = []
         finished = false
         readReferencedFiles = false
-        do {
-            text = try String(contentsOf: url, encoding: .utf8)
-        } catch {
-            text = ""
-            references = []
-            records = []
-            parseError = error.localizedDescription
-            return
+        text = ""
+        references = []
+        records = []
+        parseError = nil
+        parseRun += 1
+        let run = parseRun
+        parsing = true
+        Task {
+            let read = await Task.detached(priority: .userInitiated) {
+                Result { () throws -> (String, [(line: Int, reference: String)]) in
+                    let text = try String(contentsOf: url, encoding: .utf8)
+                    return (text, LDIFParser.fileReferences(in: text))
+                }
+            }.value
+            guard run == parseRun else { return }
+            switch read {
+            case .success(let (loaded, found)):
+                text = loaded
+                references = found.map { FileReference(line: $0.line, reference: $0.reference) }
+                parse()
+            case .failure(let error):
+                parsing = false
+                parseError = error.localizedDescription
+            }
         }
-        references = LDIFParser.fileReferences(in: text).map { FileReference(line: $0.line, reference: $0.reference) }
-        parse()
     }
 
     /// Nothing is read from the Mac's files until the user allows it.
     private func parse() {
         guard let file else { return }
+        parseRun += 1
+        let run = parseRun
+        records = []
+        parseError = nil
         if !references.isEmpty && !readReferencedFiles {
-            records = []
-            parseError = nil
+            parsing = false
             return
         }
-        do {
-            records = try LDIFParser.parse(text, files: readReferencedFiles ? .within(file.deletingLastPathComponent()) : .refuse)
-            parseError = records.isEmpty ? "The file holds no records." : nil
-        } catch {
-            records = []
-            parseError = error.localizedDescription
+        let text = text
+        let files: LDIFFileReferences = readReferencedFiles ? .within(file.deletingLastPathComponent()) : .refuse
+        parsing = true
+        Task {
+            let parsed = await Task.detached(priority: .userInitiated) { Result { try LDIFParser.parse(text, files: files) } }.value
+            guard run == parseRun else { return }
+            parsing = false
+            switch parsed {
+            case .success(let found):
+                records = found
+                parseError = found.isEmpty ? "The file holds no records." : nil
+            case .failure(let error):
+                parseError = error.localizedDescription
+            }
         }
     }
 

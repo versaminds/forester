@@ -110,9 +110,11 @@ public actor LDAPConnection {
         let continuation: CheckedContinuation<[LDAPResponse], Error>
         var responses: [LDAPResponse] = []
         var timeoutTask: Task<Void, Never>?
-        /// How long to wait for the next response; restarted by each one, so a
-        /// long search that keeps sending entries does not time out.
+        /// How long to wait for the next response; counted again from each one,
+        /// so a long search that keeps sending entries does not time out.
         var timeout: TimeInterval = 0
+        /// When the server last answered this request.
+        var lastHeard = ContinuousClock.now
 
         init(name: String, continuation: CheckedContinuation<[LDAPResponse], Error>) {
             self.name = name
@@ -417,16 +419,33 @@ public actor LDAPConnection {
         }
     }
 
-    /// (Re)starts the wait for the operation's next response.
+    /// Starts the wait for the operation's responses: one timer for the whole
+    /// request, which sleeps again for what is left since the last response
+    /// rather than a new timer per response (50,000 for a big search).
     private func arm(_ operation: PendingOperation, id: Int) {
         operation.timeoutTask?.cancel()
         let timeout = operation.timeout
         guard timeout > 0 else { return }
+        operation.lastHeard = .now
         operation.timeoutTask = Task { [weak self] in
-            try? await Task.sleep(nanoseconds: UInt64(timeout * 1_000_000_000))
-            guard !Task.isCancelled else { return }
-            await self?.expire(id)
+            var wait = Duration.seconds(timeout)
+            while true {
+                try? await Task.sleep(for: wait)
+                guard !Task.isCancelled, let self, let left = await self.timeLeft(id) else { return }
+                if left <= .zero {
+                    await self.expire(id)
+                    return
+                }
+                wait = left
+            }
         }
+    }
+
+    /// How long the operation may still wait before it has heard nothing for
+    /// its whole timeout; nil once it is no longer pending.
+    private func timeLeft(_ id: Int) -> Duration? {
+        guard let operation = pending[id] else { return nil }
+        return .seconds(operation.timeout) - (ContinuousClock.now - operation.lastHeard)
     }
 
     private func send(_ bytes: [UInt8], for id: Int, via transport: LDAPTransport) async {
@@ -507,7 +526,7 @@ public actor LDAPConnection {
             return
         }
         guard response.kind.isFinal else {
-            arm(operation, id: response.messageID)
+            operation.lastHeard = .now
             return
         }
         pending[response.messageID] = nil

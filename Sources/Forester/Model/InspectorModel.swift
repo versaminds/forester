@@ -45,7 +45,7 @@ final class InspectorModel {
 
     /// Constructed attributes AD only returns when asked by name.
     static let adConstructed = ["msDS-User-Account-Control-Computed", "msDS-UserPasswordExpiryTimeComputed",
-                                "msDS-PrincipalName", "canonicalName", "msDS-ResultantPSO", "allowedAttributesEffective"]
+                                "msDS-PrincipalName", "canonicalName", "msDS-ResultantPSO"]
 
     var showsMembership: Bool {
         switch kind {

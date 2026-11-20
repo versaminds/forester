@@ -2,11 +2,13 @@
 // Copyright © 2026 VersaMinds
 
 import LDAPKit
+import AppKit
 import SwiftUI
 
 struct ContentView: View {
     @Environment(AppModel.self) private var model
     @Environment(\.undoManager) private var undoManager
+    @Environment(\.controlActiveState) private var controlActiveState
     @SceneStorage("selectedProfile") private var storedSelection = ""
     @State private var selection: UUID?
     @State private var editing: ConnectionProfile?
@@ -92,10 +94,16 @@ struct ContentView: View {
             // They stay in its Change History, which names the directory.
             if let old, old != new, let left = model.session(for: old) {
                 undoManager?.removeAllActions(withTarget: left)
-                left.undoManager = nil
+                // Only if it is still this window's: another window may now be
+                // the one working with that connection.
+                if left.undoManager === undoManager { left.undoManager = nil }
             }
         }
-        .onChange(of: model.selectionRequest) { _, new in if let new { selection = new.id } }
+        // The window the request came from moves, not every window; with none
+        // in front (the app in the background), each does, as before.
+        .onChange(of: model.selectionRequest) { _, new in
+            if let new, controlActiveState != .inactive || NSApp.keyWindow == nil { selection = new.id }
+        }
         #if DEBUG
         .task { ContentView.startAutomationOnce(model) }
         #endif
@@ -140,6 +148,7 @@ struct NoConnectionView: View {
 struct BrowserColumn: View {
     @Environment(AppModel.self) private var model
     @Environment(\.undoManager) private var undoManager
+    @Environment(\.controlActiveState) private var controlActiveState
     @Bindable var session: DirectorySession
     @Binding var editing: ConnectionProfile?
     @State private var quickFind = ""
@@ -176,6 +185,11 @@ struct BrowserColumn: View {
                 }
                 .sheet(isPresented: $showingServerInfo) { ServerInfoView(session: session) }
                 .task(id: session.id) { session.undoManager = undoManager }
+                // Two windows can show one connection: changes belong to the
+                // window they are made in, so Edit › Undo is that window's.
+                .onChange(of: controlActiveState) { _, state in
+                    if state == .key { session.undoManager = undoManager }
+                }
             } else {
                 ConnectView(session: session) { editing = model.store.profile(session.profile.id) ?? session.profile }
             }

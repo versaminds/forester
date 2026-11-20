@@ -373,7 +373,9 @@ extension LDAPConnection {
             guard let found = try await search(request).entries.first else { return nil }
             // A large AD forest (Exchange adds thousands) can send these in ranges.
             let entry = try await completingRangedAttributes(found)
-            let schema = LDAPSchema(subschema: entry)
+            // Parsed away from this connection, which would otherwise hold the
+            // first tree level and entry read behind thousands of definitions.
+            let schema = await Task.detached(priority: .userInitiated) { LDAPSchema(subschema: entry) }.value
             return schema.isEmpty ? nil : schema
         } catch let error as LDAPError where error.resultCode == .noSuchObject || error.resultCode == .insufficientAccessRights {
             return nil

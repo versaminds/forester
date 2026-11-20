@@ -1245,6 +1245,17 @@ enum Automation {
         try expect("redo makes the change again", try await read(user)?.string("description") == "Changed to be undone")
         try expect("a redo is listed as one", session.history.first?.summary == "Redid: Saved description.")
 
+        // Refused (here: read-only), the change stays on Edit › Undo.
+        let wasReadOnly = session.profile.readOnly
+        session.setReadOnly(true)
+        session.notice = nil
+        undoManager.undo()
+        try await waitFor("undo refused while read-only") { session.notice?.isError == true }
+        try expect("a refused undo stays on Edit › Undo, with nothing to redo",
+                   undoManager.canUndo && undoManager.undoActionName == "Saved description" && !undoManager.canRedo)
+        session.setReadOnly(wasReadOnly)
+        try expect("the change is still in the directory", try await read(user)?.string("description") == "Changed to be undone")
+
         // A list: only what the change added goes, and someone else's
         // addition meanwhile stops a plain undo but survives a forced one.
         let groups = try await session.run {

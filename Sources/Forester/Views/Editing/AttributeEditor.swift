@@ -575,11 +575,13 @@ struct AttributePicker: View {
     let entry: LDAPEntry
     let choose: (String) -> Void
     @State private var filter = ""
+    /// What AD says this account may write on this entry. Asked for when the
+    /// picker opens, not with every entry read: AD checks each attribute's
+    /// access to answer. Until it answers, the schema's list is shown.
+    @State private var effective: [String] = []
 
     private var candidates: [(name: String, required: Bool)] {
         let present = Set(entry.attributes.map { $0.baseName.lowercased() })
-        // AD computes exactly what this account may write on this entry.
-        let effective = entry.strings("allowedAttributesEffective")
         let allowed: (must: [String], may: [String])
         if !effective.isEmpty {
             allowed = ([], effective)
@@ -637,6 +639,12 @@ struct AttributePicker: View {
             if candidates.isEmpty, !filter.isEmpty {
                 Button("Use “\(filter)”") { choose(filter) }.padding(8)
             }
+        }
+        .task {
+            guard session.hasADTools else { return }
+            let dn = entry.dn
+            let read = try? await session.run { try await $0.read(dn, attributes: ["allowedAttributesEffective"]) }
+            effective = read?.strings("allowedAttributesEffective") ?? []
         }
     }
 }

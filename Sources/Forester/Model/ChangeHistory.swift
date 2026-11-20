@@ -136,6 +136,9 @@ extension DirectorySession {
     private func registerReversal(of box: RecordBox, name: String) {
         guard let undoManager else { return }
         undoManager.registerUndo(withTarget: self) { session in
+            // AppKit takes the opposite (Redo after an undo) only while this
+            // runs, before the network has answered.
+            let undoing = undoManager.isUndoing
             let next = RecordBox()
             session.registerReversal(of: next, name: name)
             Task { @MainActor in
@@ -144,6 +147,10 @@ extension DirectorySession {
                     return
                 }
                 next.id = await session.undo(id, registering: false)
+                // Refused (read-only, changed since, offline): the change is
+                // still there to undo, so Undo offers it again. Registering it
+                // also clears the Redo that would have nothing to redo.
+                if next.id == nil, undoing { session.registerReversal(of: box, name: name) }
             }
         }
         undoManager.setActionName(name)

@@ -616,6 +616,8 @@ enum UITour {
         }
         session.sheet = .importLDIF(sample)
         let importer = try await waitForSheet("import")
+        // The file is read in the background; Return imports once it has been.
+        try await Automation.waitFor("the file read") { D.buttons(in: importer).contains { $0.title.hasPrefix("Import ") && $0.enabled } }
         await D.pressReturn(in: importer)
         try await Automation.waitFor("import done", timeout: 30) { (try? D.button("Close", in: importer)) != nil }
         try await Automation.settle(0.8)
