@@ -10,5 +10,14 @@
     <description>Releases of Forester for Mac, signed by VersaMinds.</description>
     <language>en</language>
     <!-- Releases, newest first -->
+    <item>
+      <title>Forester 1.1.0</title>
+      <pubDate>Fri, 20 Nov 2026 08:25:27 +0000</pubDate>
+      <sparkle:version>20261120.0820</sparkle:version>
+      <sparkle:shortVersionString>1.1.0</sparkle:shortVersionString>
+      <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+      <sparkle:releaseNotesLink>https://github.com/versaminds/forester/releases/tag/v1.1.0</sparkle:releaseNotesLink>
+      <enclosure url="https://github.com/versaminds/forester/releases/download/v1.1.0/Forester.dmg" sparkle:edSignature="dc1nk1PjlB5h61xEeWPcLpX32pSIHm5VtaK0jp14BEFrjM6kA9UiDwRI7IXlL0j9hOtj19Vp5aVBDDHhTtlWAA==" length="8071975" type="application/octet-stream"/>
+    </item>
   </channel>
 </rss>
