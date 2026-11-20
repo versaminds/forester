@@ -160,8 +160,8 @@ author; for a project its owner submits, that currently means 225 GitHub stars,
 (<https://docs.brew.sh/Acceptable-Casks>, <https://docs.brew.sh/Package-Acceptance-Policy>).
 Until then, publish from VersaMinds' own tap:
 
-1. Create the public repository `versaminds/homebrew-tap` (the name must start
-   with `homebrew-`) with `Casks/forester.rb`. `make-release.sh` writes this
+1. The public repository `versaminds/homebrew-tap` (it also holds Wayfinder's
+   cask) gets `Casks/forester.rb`. `make-release.sh` writes this
    file, with the release's version and SHA-256, to `build/forester.rb`:
 
 ```ruby
@@ -174,12 +174,20 @@ cask "forester" do
   desc "LDAP and Active Directory browser"
   homepage "https://forester.versaminds.live/"
 
+  livecheck do
+    url "https://forester.versaminds.live/updates/appcast.xml"
+    strategy :sparkle, &:short_version
+  end
+
+  auto_updates true
   depends_on macos: :sonoma
 
   app "Forester.app"
 
   zap trash: [
     "~/Library/Application Support/Forester",
+    "~/Library/Caches/live.versaminds.Forester",
+    "~/Library/HTTPStorages/live.versaminds.Forester",
     "~/Library/Preferences/live.versaminds.Forester.plist",
     "~/Library/Saved Application State/live.versaminds.Forester.savedState",
   ]
@@ -270,7 +278,7 @@ it once a month. What runs, all on GitHub's macOS runners:
 |---|---|---|
 | Tests (`ci.yml`) | every push to main and pull request | `scripts/test-all.sh`: unit and integration tests, release builds of both variants, the app driving itself, the App Store variant in its sandbox |
 | Weekly (`weekly.yml`) | Mondays, 05:00 UTC | every test of main with the big directory; a failure opens an issue. A newer Sparkle is tested and proposed, and merged when every test passes and the major version is the same |
-| Release (`release.yml`) | Tuesdays, 06:00 UTC | when the last release is four weeks old and the app changed: every test, the version raised (1.1.0, 1.2.0, …), the App Store package uploaded to App Store Connect, the DMG built, the tag pushed and a GitHub release drafted |
+| Release (`release.yml`) | Tuesdays, 06:00 UTC | when the last release is four weeks old and the app changed: every test, then with the signing secrets (below) the version raised (1.1.0, 1.2.0, …), the App Store package uploaded to App Store Connect, the DMG built, the tag pushed and a GitHub release drafted; without them, a "Release due" issue that says to run `scripts/release.sh` |
 | Publish (`publish.yml`) | when you publish a release | the update feed, the website and the Homebrew cask |
 | Website (`site.yml`) | a push to main that touches `site/` | deploys the website |
 | Code scanning (`codeql.yml`) | every push to main that changes the code, and Mondays, 04:00 UTC | CodeQL reads Forester's Swift for security bugs, both variants; findings under Security › Code scanning |
@@ -287,6 +295,35 @@ Active Directory, run the AD checks (TESTING.md step 6) on your Mac: CI has no
 domain controller.
 
 A fix in between: Actions › Release › Run workflow, part `patch`, force on.
+
+### Releasing from the release Mac
+
+Until the signing secrets are in the repository, a release is one command on
+the Mac that holds the certificates, the App Store profile, the notary
+profile and the update key:
+
+```bash
+scripts/release.sh
+```
+
+It releases the next minor version (`patch`, `major` or a version such as
+`1.2.0` instead), and `--check` runs only its checks. It refuses unless main
+is clean and pushed and GitHub's Tests passed for that very commit. Then it
+raises `VERSION`, builds and signs the App Store package and opens it in
+Transporter (or uploads it, with `ASC_KEY_ID` and `ASC_ISSUER_ID` set),
+builds, notarizes and signs the download, tags and pushes, publishes the
+GitHub release with the image, deploys the website with the update feed,
+and writes the cask into `versaminds/homebrew-tap`. Nothing is pushed until
+both builds have succeeded. Yours afterwards: Deliver in Transporter, and in
+App Store Connect add the build to the new version and Submit for Review.
+
+The update key's private half lives only in this Mac's login keychain
+(account `forester`). Export it once and keep it offline: without it no
+installed copy can be updated again.
+
+```bash
+.build/artifacts/sparkle/Sparkle/bin/generate_keys --account forester -x forester-update-key
+```
 
 ### Set up once
 

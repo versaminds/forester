@@ -86,6 +86,7 @@ jobs:
     timeout-minutes: 120
     permissions:
       contents: write
+      issues: write
     env:
       VERSION: ${{ needs.due.outputs.version }}
       LAST: ${{ needs.due.outputs.last }}
@@ -110,14 +111,32 @@ jobs:
           ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
           ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
           SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        # Without the signing secrets the release is made on the release Mac
+        # with scripts/release.sh; an issue says it is due, and nothing else
+        # is changed here.
         run: |
           scripts/ci/signing.sh
-          if ! grep -qx 'appstore=true' "$GITHUB_OUTPUT"; then
-            echo "::error::The App Store package cannot be signed and uploaded with the secrets set; nothing was changed. See docs/DISTRIBUTION.md, \"Releases every month\"."
-            exit 1
+          if grep -qx 'appstore=true' "$GITHUB_OUTPUT"; then
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+            exit 0
           fi
+          echo "ready=false" >> "$GITHUB_OUTPUT"
+          title="Release due: Forester $VERSION"
+          body="Every test passed on $GITHUB_SHA, and $LAST is old enough. This repository has no signing secrets, so make the release on the release Mac:
+
+          \`\`\`
+          scripts/release.sh $VERSION
+          \`\`\`
+
+          (docs/DISTRIBUTION.md, \"Releases every month\"). Close this once it is out."
+          number=$(gh issue list --state open --search "\"$title\" in:title" --json number --jq '.[0].number // empty')
+          [ -n "$number" ] || gh issue create --title "$title" --body "$body"
+          echo "::notice::$title: run scripts/release.sh $VERSION on the release Mac."
 
       - name: Raise the version to ${{ env.VERSION }}
+        if: steps.signing.outputs.ready == 'true'
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
@@ -125,6 +144,7 @@ jobs:
           git commit -q -m "Forester $VERSION" VERSION
 
       - name: Build and upload the App Store package
+        if: steps.signing.outputs.ready == 'true'
         env:
           PROFILE: ${{ steps.signing.outputs.profile }}
           ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
@@ -138,7 +158,7 @@ jobs:
           echo "- Uploaded to App Store Connect: version $VERSION, build $(plutil -extract CFBundleVersion raw build/AppStore/Forester.app/Contents/Info.plist)" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Build the download
-        if: steps.signing.outputs.download == 'true'
+        if: steps.signing.outputs.ready == 'true' && steps.signing.outputs.download == 'true'
         env:
           FORESTER_NOTARY_PROFILE: forester-notary
           FORESTER_UPDATE_KEY_FILE: ${{ steps.signing.outputs.update_key }}
@@ -148,11 +168,13 @@ jobs:
           git checkout -- site/updates/appcast.xml
 
       - name: Push the version and its tag
+        if: steps.signing.outputs.ready == 'true'
         run: |
           git tag -a "v$VERSION" -m "Forester $VERSION"
           git push origin "HEAD:refs/heads/main" "v$VERSION"
 
       - name: Draft the GitHub release
+        if: steps.signing.outputs.ready == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
