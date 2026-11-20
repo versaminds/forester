@@ -143,7 +143,8 @@ NOTES=$(python3 -I -c 'import json,sys; print(json.dumps({"tag_name": sys.argv[1
   api -X POST "https://api.github.com/repos/$REPO/releases/generate-notes" --data-binary @- | json 'd["body"]')
 RELEASE=$(python3 -I -c 'import json,sys; print(json.dumps({"tag_name": sys.argv[1], "name": "Forester " + sys.argv[2], "body": sys.argv[3]}))' \
   "v$NEXT" "$NEXT" "$NOTES" | api -X POST "https://api.github.com/repos/$REPO/releases" --data-binary @- | json 'd["id"]')
-for asset in "$DMG:Forester.dmg:application/x-apple-diskimage" "$CASK:forester.rb:text/plain"; do
+# Braced: zsh reads ":F" and ":f" after a bare $DMG or $CASK as modifiers.
+for asset in "${DMG}:Forester.dmg:application/x-apple-diskimage" "${CASK}:forester.rb:text/plain"; do
   api -X POST -H "Content-Type: ${asset##*:}" --data-binary "@${asset%%:*}" \
     "https://uploads.github.com/repos/$REPO/releases/$RELEASE/assets?name=$(print -r -- "$asset" | cut -d: -f2)" >/dev/null
 done
@@ -166,6 +167,6 @@ print(json.dumps(body))' "$CASK" "$NEXT" "$EXISTING" |
 print -- "
 Forester $NEXT is out:
   the download   https://github.com/$REPO/releases/tag/v$NEXT (in the update feed)
-  Homebrew       brew install --cask versaminds/tap/forester
+  Homebrew       brew trust versaminds/tap (once), then brew install --cask versaminds/tap/forester
   App Store      $UPLOADED; then, in App Store Connect, add the build to
                  version $NEXT and press Submit for Review."

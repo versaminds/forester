@@ -223,7 +223,8 @@ enum UIDriver {
                 Automation.log("typed into \(name)")
                 return
             }
-            Automation.log("\(name) holds “\(shown)” after typing (app in front: \(NSApp.isActive)); typing again")
+            // Lengths only: what is typed can be a test password.
+            Automation.log("\(name) holds \(shown.count) of \(text.count) characters after typing (app in front: \(NSApp.isActive)); typing again")
         }
         throw NotFound(description: "typing into \(name) did not arrive")
     }

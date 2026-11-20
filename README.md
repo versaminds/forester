@@ -21,6 +21,22 @@ Swift on Apple's Foundation, Security and CryptoKit: its own BER encoder over
 TCP and TLS, no third-party dependencies, no use of the deprecated
 `LDAP.framework`.
 
+## Install
+
+- **Mac App Store:** [Forester: LDAP Browser](https://apps.apple.com/app/forester-ldap-browser/id6830866952).
+- **Download:** the signed, notarized `Forester.dmg` from the
+  [latest release](https://github.com/versaminds/forester/releases/latest); it
+  updates itself.
+- **Homebrew:** trust VersaMinds' tap once, then install the cask:
+
+```bash
+brew trust versaminds/tap
+```
+
+```bash
+brew install --cask versaminds/tap/forester
+```
+
 ## Build and run
 
 Requires macOS 14 or later and Xcode. The Swift toolchain alone builds and

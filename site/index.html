@@ -330,6 +330,10 @@ cd forester &amp;&amp; scripts/build-app.sh</div>
         <p>Through the Mac App Store, like your other apps. Turn on automatic updates in the App Store's settings and each new version arrives by itself.</p>
       </details>
       <details>
+        <summary>Can I install it with Homebrew, or without the App Store?</summary>
+        <p>Yes. The same app is a signed, notarized download on <a href="https://github.com/versaminds/forester/releases/latest">GitHub</a>, which updates itself. With Homebrew, trust VersaMinds' tap once with <code>brew trust versaminds/tap</code>, then run <code>brew install --cask versaminds/tap/forester</code>.</p>
+      </details>
+      <details>
         <summary>Can it change my directory by accident?</summary>
         <p>No. A new connection is read-only, and Forester refuses every change until you allow changes for that connection. You can make it read-only again at any time.</p>
       </details>

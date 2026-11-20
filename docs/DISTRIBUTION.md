@@ -204,7 +204,9 @@ brew audit --cask --new ./Casks/forester.rb
 brew install --cask ./Casks/forester.rb
 ```
 
-3. People then install it with `brew install --cask versaminds/tap/forester`.
+3. People then trust the tap once (`brew trust versaminds/tap`; Homebrew refuses
+   casks from a tap it has not been told to trust) and install it with
+   `brew install --cask versaminds/tap/forester`.
    For every release, publish the GitHub release first, then copy the new
    `build/forester.rb` over the tap's and push it; `brew upgrade` brings it to
    everyone who installed through the tap.
