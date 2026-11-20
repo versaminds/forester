@@ -1,0 +1,56 @@
+# SPDX-License-Identifier: LicenseRef-PolyForm-Shield-1.0.0
+# Copyright © 2026 VersaMinds
+name: Code scanning
+
+# CodeQL reads Forester's own Swift for security bugs (what goes into a
+# request, a file, the keychain or a log) on every push to main that changes
+# the code, and every Monday with the newest queries even when nothing
+# changed. Findings appear under Security › Code scanning. Free for a public
+# repository.
+
+on:
+  push:
+    branches: [main]
+    paths: ['Sources/**', 'Package.swift', 'Package.resolved', '.github/workflows/codeql.yml']
+  schedule:
+    - cron: '0 4 * * 1'
+  workflow_dispatch:
+
+concurrency:
+  group: codeql-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  analyze:
+    name: Swift
+    runs-on: macos-26
+    timeout-minutes: 60
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Use the newest Xcode
+        run: scripts/ci/select-xcode.sh
+
+      - uses: github/codeql-action/init@33d7b85da1a04171e211befe2c739303b9a4c066 # v4.39.3
+        with:
+          languages: swift
+          build-mode: manual
+          queries: security-extended
+
+      # Both variants: the App Store build leaves out code the download has.
+      - name: Build
+        run: |
+          swift build
+          FORESTER_APP_STORE=1 swift build -Xswiftc -DAPP_STORE --scratch-path .build/appstore
+
+      - uses: github/codeql-action/analyze@33d7b85da1a04171e211befe2c739303b9a4c066 # v4.39.3
+        with:
+          category: swift

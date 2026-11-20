@@ -273,8 +273,11 @@ it once a month. What runs, all on GitHub's macOS runners:
 | Release (`release.yml`) | Tuesdays, 06:00 UTC | when the last release is four weeks old and the app changed: every test, the version raised (1.1.0, 1.2.0, …), the App Store package uploaded to App Store Connect, the DMG built, the tag pushed and a GitHub release drafted |
 | Publish (`publish.yml`) | when you publish a release | the update feed, the website and the Homebrew cask |
 | Website (`site.yml`) | a push to main that touches `site/` | deploys the website |
+| Code scanning (`codeql.yml`) | every push to main that changes the code, and Mondays, 04:00 UTC | CodeQL reads Forester's Swift for security bugs, both variants; findings under Security › Code scanning |
 
-Dependabot keeps the workflows' own actions current.
+Dependabot keeps the workflows' own actions current, and its alerts and
+security updates (on since 20 November 2026) warn about and fix known
+vulnerabilities in Sparkle and those actions.
 
 **Your part of each release:** in App Store Connect, once Apple has processed
 the build (TestFlight shows it), create the version, add the build and press
