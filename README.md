@@ -1,29 +1,40 @@
+<p align="center">
+  <img src="site/img/og.jpg" alt="Forester, the LDAP and Active Directory browser for Mac, beside its window showing a directory tree and a user's account" width="100%">
+</p>
+
+<p align="center">
+  <a href="https://apps.apple.com/app/forester-ldap-browser/id6830866952"><img alt="Mac App Store" src="https://img.shields.io/badge/Mac_App_Store-0D96F6?style=for-the-badge&logo=apple&logoColor=white"></a>
+  <a href="https://github.com/versaminds/forester/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/versaminds/forester?style=for-the-badge&label=Download"></a>
+  <a href="https://forester.versaminds.live"><img alt="Website" src="https://img.shields.io/badge/Website-forester.versaminds.live-1B5E9E?style=for-the-badge"></a>
+</p>
+
 # Forester
 
 **The LDAP and Active Directory browser for Mac.**
 
 A native macOS app to browse and administer LDAP directories and Active
 Directory: users, groups, computers, OUs, policies, the schema and the server.
+Free to use, made by [VersaMinds](https://www.versaminds.live), the company
+behind Stackbridge.
 
-Made by [VersaMinds](https://www.versaminds.live), the company behind Stackbridge.
-Website: [forester.versaminds.live](https://forester.versaminds.live).
-
-[![Buy me a coffee](https://img.shields.io/badge/Buy%20me%20a%20coffee-FFDD00?style=for-the-badge&logo=buymeacoffee&logoColor=black)](https://buymeacoffee.com/lennertmertens)
-
-Forester is free. If it saves you time, you can [buy me a coffee](https://buymeacoffee.com/lennertmertens).
-
-Every connection is **read-only until you allow changes** (the Read-only button
-in the toolbar, ⌥⌘E, or the connection's settings), so pointing it at a
-production directory cannot change anything by accident.
-
-Written in Swift with SwiftUI and AppKit. The LDAP client (`LDAPKit`) is pure
-Swift on Apple's Foundation, Security and CryptoKit: its own BER encoder over
-TCP and TLS, no third-party dependencies, no use of the deprecated
-`LDAP.framework`.
+- **Safe on production.** Every connection is read-only until you allow
+  changes (the Read-only button, ⌥⌘E, or the connection's settings), and
+  Edit › Undo takes changes back.
+- **Active Directory in words.** Account flags, password policies, FSMO roles,
+  replication metadata and permissions decoded, not shown as numbers and
+  binary.
+- **Fast with big directories.** Trees load a level at a time, searches page
+  past server limits, and groups with thousands of members stay quick.
+- **Native, with nothing else inside.** Swift on Apple's own frameworks: its
+  own LDAP client, no third-party code, and Kerberos with the ticket your Mac
+  already has.
+- **Try it without a directory.** Help › Try a Sample Directory opens a
+  public, read-only test directory.
 
 ## Install
 
-- **Mac App Store:** [Forester: LDAP Browser](https://apps.apple.com/app/forester-ldap-browser/id6830866952).
+- **Mac App Store:** [Forester: LDAP Browser](https://apps.apple.com/app/forester-ldap-browser/id6830866952),
+  updated by the App Store.
 - **Download:** the signed, notarized `Forester.dmg` from the
   [latest release](https://github.com/versaminds/forester/releases/latest); it
   updates itself.
@@ -37,29 +48,21 @@ brew trust versaminds/tap
 brew install --cask versaminds/tap/forester
 ```
 
-## Build and run
+Requires macOS 14 or later. If Forester saves you time, you can
+[buy me a coffee](https://buymeacoffee.com/lennertmertens).
 
-Requires macOS 14 or later and Xcode. The Swift toolchain alone builds and
-runs it, but the universal (Apple silicon and Intel) release build needs Xcode.
+## Screenshots
 
-```bash
-scripts/build-app.sh
-```
-
-```bash
-open "build/Forester.app"
-```
-
-`scripts/build-app.sh universal` builds for Apple silicon and Intel. Copy the
-app to `/Applications` if you like.
-
-The script signs the app with a "Developer ID Application" or "Apple
-Development" certificate from your keychain if there is one (or the one named
-in `FORESTER_SIGN_IDENTITY`), and otherwise ad hoc, which is enough to run it on
-the Mac that built it. An app signed ad hoc is a different app to the keychain
-after every build, so macOS asks for your Mac's password, twice, before a new
-build may use a saved connection password; choose **Always Allow** both times.
-Signed with a certificate, it keeps that access from one build to the next.
+<table>
+  <tr>
+    <td width="50%"><picture><source media="(prefers-color-scheme: dark)" srcset="site/img/search-dark-1600.webp"><img src="site/img/search-light-1600.webp" alt="A search for enabled users that are not computers, the results beside the selected service account"></picture><br><sub><b>Search</b> with any LDAP filter, a condition builder or 32 presets.</sub></td>
+    <td width="50%"><picture><source media="(prefers-color-scheme: dark)" srcset="site/img/password-dark.webp"><img src="site/img/password-light.webp" alt="The Reset Password sheet, with a strong password generator and must-change-at-next-sign-in"></picture><br><sub><b>Accounts:</b> reset passwords, unlock, enable and disable.</sub></td>
+  </tr>
+  <tr>
+    <td width="50%"><picture><source media="(prefers-color-scheme: dark)" srcset="site/img/import-dark.webp"><img src="site/img/import-light.webp" alt="The Import LDIF sheet, saying what the file contains before anything runs"></picture><br><sub><b>LDIF import</b> says what a file will do before it runs.</sub></td>
+    <td width="50%"><picture><source media="(prefers-color-scheme: dark)" srcset="site/img/read-only-dark.webp"><img src="site/img/read-only-light.webp" alt="A user's account settings greyed out while the connection is read-only"></picture><br><sub><b>Read-only</b> until you allow changes, on every connection.</sub></td>
+  </tr>
+</table>
 
 ## Connecting to Active Directory
 
@@ -238,6 +241,32 @@ push. Releases are made every month by GitHub Actions, up to App Review:
 docs/DISTRIBUTION.md, step 5.
 
 ## Development
+
+### Build and run
+
+Requires macOS 14 or later and Xcode. The Swift toolchain alone builds and
+runs it, but the universal (Apple silicon and Intel) release build needs Xcode.
+
+```bash
+scripts/build-app.sh
+```
+
+```bash
+open "build/Forester.app"
+```
+
+`scripts/build-app.sh universal` builds for Apple silicon and Intel. Copy the
+app to `/Applications` if you like.
+
+The script signs the app with a "Developer ID Application" or "Apple
+Development" certificate from your keychain if there is one (or the one named
+in `FORESTER_SIGN_IDENTITY`), and otherwise ad hoc, which is enough to run it on
+the Mac that built it. An app signed ad hoc is a different app to the keychain
+after every build, so macOS asks for your Mac's password, twice, before a new
+build may use a saved connection password; choose **Always Allow** both times.
+Signed with a certificate, it keeps that access from one build to the next.
+
+### Debug builds and releases
 
 ```bash
 swift run Forester

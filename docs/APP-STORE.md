@@ -169,8 +169,11 @@ primary language **English (U.K.)**, bundle ID `live.versaminds.Forester`, SKU
 | License agreement | Apple's standard (the terms page says the PolyForm Shield License applies to the source as well) |
 | Version release | Manually release this version, so the website can link it the same day |
 
-**Screenshots** (Mac, 2880 × 1800): nine, taken from the screen so they show
-the app as macOS 26 and later draw it. With the test directory running, and
+**Screenshots** (Mac, 2880 × 1800): ten. The first is the name beside the app
+(`scripts/make-store-intro.swift`, the website's sharing picture at the App
+Store's size, without a price or "GitHub", which App Review may refuse); the
+other nine are taken from the screen so they show the app as macOS 26 and
+later draw it. With the test directory running, and
 the Mac left alone for the minute it takes (Forester must stay in front):
 
 ```bash

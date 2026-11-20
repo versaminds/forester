@@ -8,7 +8,7 @@
 #
 # The pictures come from the screen, so Forester must stay in front: leave
 # the Mac alone for the minute it takes. The terminal needs the Screen
-# Recording permission. Writes build/AppStore/Screenshots/01-… to 09-…, in
+# Recording permission. Writes build/AppStore/Screenshots/00-… to 09-…, in
 # the order to upload them, and refreshes site/img.
 set -euo pipefail
 
@@ -34,6 +34,9 @@ for name in overview service-account search membership attributes read-only pass
   cp "$SHOTS/M-$name-light.png" "$OUT/$(printf %02d $i)-$name.png"
   i=$((i + 1))
 done
+# The first one is the name and the app together, as on the website's sharing picture.
+swift "$ROOT/scripts/make-store-intro.swift" "$ROOT/build/AppIcon.iconset/icon_512x512@2x.png" \
+  "$SHOTS/M-overview-light.png" "$OUT/00-intro.png"
 for file in "$OUT"/*.png; do
   size=$(sips -g pixelWidth -g pixelHeight "$file" | awk '/pixel/ { printf "%s ", $2 }')
   [[ "$size" == "2880 1800 " ]] || { print -u2 "app-store-screenshots: ${file:t} is $size, not 2880 by 1800."; exit 1; }
