@@ -143,8 +143,9 @@ Systems runs, without signing in. Sign in with a name and password, anonymously,
 sign-on), over StartTLS or LDAPS with the TLS channel bound into the exchange,
 so no password is typed or kept. Saved with keychain passwords, imported and exported as
 `.forester` files (passwords never included), and optionally kept in
-iCloud Drive so they appear on your other Macs. Connections and passwords saved
-by the app under its earlier name, LDAP Explorer, are picked up on first launch.
+iCloud Drive so they appear on your other Macs. Connections saved
+by the app under its earlier name, LDAP Explorer, are picked up on first launch;
+their passwords are asked for once.
 
 **Updates and reports.** The Mac App Store version is updated by the App
 Store. The download updates itself through Sparkle: releases signed by

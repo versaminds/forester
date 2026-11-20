@@ -114,7 +114,11 @@ struct NewEntrySheet: View {
     @State private var groupType: Int64 = -2147483646
     @State private var copied: [LDAPAttribute] = []
     @State private var copyAttributes: Set<String> = []
-    @State private var addToGroups = true
+    /// Off until it is known that none of the groups grants administrative
+    /// rights (on AD the check takes a search; before it answers, or when it
+    /// fails, the copy joins none of them unless the user ticks the box).
+    @State private var addToGroups = false
+    @State private var privilegeCheckFailed = false
     @State private var sourceGroups: [String] = []
     /// Source groups that grant administrative rights (adminCount=1 in AD).
     @State private var privilegedGroups: [String] = []
@@ -242,7 +246,8 @@ struct NewEntrySheet: View {
         }
         .onAppear(perform: prepare)
         .onChange(of: template) { _, new in
-            namingAttribute = new.namingAttribute
+            // A duplicate keeps the original's naming attribute (ou=, uid=), set by prepare().
+            if source == nil { namingAttribute = new.namingAttribute }
             if new == .custom, customClasses.isEmpty { customClasses = ["top"] }
         }
         .sheet(isPresented: $choosingParent) {
@@ -442,7 +447,12 @@ struct NewEntrySheet: View {
                 }
                 .toggleStyle(.checkbox)
                 .help(sourceGroups.map(DN.displayName).joined(separator: "\n"))
-                if !privilegedGroups.isEmpty {
+                if privilegeCheckFailed {
+                    Label("Forester could not check which of these groups grant administrative rights, so none are added unless you tick this.",
+                          systemImage: "exclamationmark.triangle.fill")
+                        .font(.caption)
+                        .foregroundStyle(.orange)
+                } else if !privilegedGroups.isEmpty {
                     Label("Including \(privilegedGroups.map(DN.displayName).joined(separator: ", ")), which grant\(privilegedGroups.count == 1 ? "s" : "") administrative rights.",
                           systemImage: "exclamationmark.triangle.fill")
                         .font(.callout).foregroundStyle(.orange)
@@ -545,7 +555,7 @@ struct NewEntrySheet: View {
             }
             copyAttributes = Set(copied.map(\.name).filter { !Self.notCopiedByDefault.contains($0.lowercased()) })
             sourceGroups = source.strings("memberOf")
-            if session.hasADTools, !sourceGroups.isEmpty { Task { await findPrivilegedGroups() } }
+            if session.hasADTools, !sourceGroups.isEmpty { Task { await findPrivilegedGroups() } } else { addToGroups = true }
             if session.hasADTools, classes.contains(where: { $0.caseInsensitiveCompare("user") == .orderedSame }) {
                 extraFields = ["sAMAccountName", "userPrincipalName", "givenName", "sn", "displayName"]
             }
@@ -562,10 +572,13 @@ struct NewEntrySheet: View {
         guard let base = session.server?.defaultNamingContext else { return }
         let request = LDAPSearchRequest(base: base, scope: .subtree, filter: .and([.equality("objectCategory", "group"), .equality("adminCount", "1")]),
                                         attributes: ["1.1"])
-        guard let found = try? await session.run({ try await $0.pagedSearch(request, pageSize: 500, limit: 1_000) }) else { return }
+        guard let found = try? await session.run({ try await $0.pagedSearch(request, pageSize: 500, limit: 1_000) }) else {
+            privilegeCheckFailed = true
+            return
+        }
         let protected = Set(found.entries.map { DN.normalized($0.dn) })
         privilegedGroups = sourceGroups.filter { protected.contains(DN.normalized($0)) }
-        if !privilegedGroups.isEmpty { addToGroups = false }
+        addToGroups = privilegedGroups.isEmpty
     }
 
     /// What the name fills in: sAMAccountName, userPrincipalName and

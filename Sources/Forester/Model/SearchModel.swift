@@ -242,6 +242,13 @@ final class SearchModel {
         insideTask?.cancel()
         insideTask = nil
         lookingInside = false
+        // Stopped here, not by the task: one stopped while it builds the
+        // rows returns early, and would leave the search "running" for good.
+        if running {
+            currentRun += 1
+            running = false
+            summary = "Stopped."
+        }
     }
 
     /// Which run may still update the results: a search replaced by a newer
@@ -412,9 +419,7 @@ final class SearchModel {
                 let entries: [LDAPEntry] = try await Self.onServer(session, forest: forest) { connection in
                     var found: [LDAPEntry] = []
                     if let selection {
-                        for dn in selection.sorted() {
-                            if let entry = try await connection.read(dn, attributes: request.attributes) { found.append(entry) }
-                        }
+                        found = try await connection.readEach(selection.sorted(), attributes: request.attributes)
                     } else {
                         found = try await connection.pagedSearch(request, pageSize: pageSize, limit: limit).entries
                     }
@@ -426,7 +431,8 @@ final class SearchModel {
                 Exporter.saveLDIF(entries, suggestedName: selection == nil ? "search" : "selection")
             } catch {
                 self?.exporting = false
-                self?.error = error.localizedDescription
+                // The results stay: a failed export is not a failed search.
+                session.report("The export failed: \(error.localizedDescription)", isError: true)
             }
         }
     }

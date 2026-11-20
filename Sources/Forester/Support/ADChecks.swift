@@ -37,6 +37,8 @@ enum ADChecks {
             try await UITour.signIn(session, dn, password)
         }
         func open(_ dn: String) async throws {
+            // Memberships are read on their tab; several checks below read them.
+            session.inspector.tab = .membership
             session.open(dn)
             try await Automation.waitFor("\(DN.displayName(dn)) shown") {
                 session.inspector.entry.map { DN.isSame($0.dn, dn) } == true && !session.inspector.membership.loading

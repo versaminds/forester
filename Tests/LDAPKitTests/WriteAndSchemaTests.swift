@@ -94,11 +94,11 @@ struct WriteTests {
             .values("nTSecurityDescriptor").first)
         var sd = try SecurityDescriptor(data: raw)
         #expect(sd.userCannotChangePassword)
-        sd.setUserCannotChangePassword(false)
+        try sd.setUserCannotChangePassword(false)
         try await c.modify(dn, [LDAPModification(.replace, "nTSecurityDescriptor", [sd.encoded()])], controls: [.sdFlags(4)])
         let reread = try #require(try await c.read(dn, attributes: ["nTSecurityDescriptor"])?.values("nTSecurityDescriptor").first)
         #expect(try SecurityDescriptor(data: reread).userCannotChangePassword == false)
-        sd.setUserCannotChangePassword(true)
+        try sd.setUserCannotChangePassword(true)
         try await c.modify(dn, [LDAPModification(.replace, "nTSecurityDescriptor", [sd.encoded()])])
         await c.close()
     }
@@ -378,7 +378,7 @@ final class Progress: @unchecked Sendable {
 
     @Test func togglingKeepsCanonicalOrder() throws {
         var sd = try SecurityDescriptor(data: sample(cannotChange: false))
-        sd.setUserCannotChangePassword(true)
+        try sd.setUserCannotChangePassword(true)
         #expect(sd.userCannotChangePassword)
         let aces = try #require(sd.dacl?.aces)
         #expect(aces.prefix(2).allSatisfy { $0.type == SecurityDescriptor.ACE.accessDeniedObject })
@@ -386,7 +386,7 @@ final class Progress: @unchecked Sendable {
         #expect(aces.count == 4)
         let reparsed = try SecurityDescriptor(data: sd.encoded())
         #expect(reparsed == sd)
-        sd.setUserCannotChangePassword(false)
+        try sd.setUserCannotChangePassword(false)
         #expect(!sd.userCannotChangePassword)
         #expect(sd.dacl?.aces.filter { $0.type == SecurityDescriptor.ACE.accessAllowedObject }.count == 2)
     }

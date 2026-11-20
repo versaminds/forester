@@ -25,12 +25,12 @@ public enum LDIF {
     /// subtree search returns entries in whatever order the server keeps them,
     /// and AD's is not parent-first. Otherwise the server's order is kept.
     public static func parentsFirst(_ entries: [LDAPEntry]) -> [LDAPEntry] {
-        entries.enumerated()
-            .sorted { a, b in
-                let (depthA, depthB) = (DN.components(a.element.dn).count, DN.components(b.element.dn).count)
-                return depthA != depthB ? depthA < depthB : a.offset < b.offset
-            }
-            .map(\.element)
+        // Each DN parsed once, not twice per comparison.
+        let depths = entries.map { DN.components($0.dn).count }
+        let order = entries.indices.sorted { a, b in
+            depths[a] != depths[b] ? depths[a] < depths[b] : a < b
+        }
+        return order.map { entries[$0] }
     }
 
     /// One `name: value` line, base64-encoded (`name:: …`) when the value is not

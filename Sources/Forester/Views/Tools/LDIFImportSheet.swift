@@ -319,12 +319,10 @@ struct LDIFImportSheet: View {
         }
         checking = true
         task = Task {
-            var found: [String] = []
-            for dn in adds {
-                if Task.isCancelled { break }
-                let present = try? await session.run { try await $0.read(dn, attributes: ["1.1"]) }
-                if present != nil { found.append(dn) }
-            }
+            // An entry that cannot be read counts as not there, as before.
+            let present = (try? await session.run { try await $0.readEach(adds, attributes: ["1.1"], skippingErrors: true) }) ?? []
+            let presentDNs = Set(present.map { DN.normalized($0.dn) })
+            let found = adds.filter { presentDNs.contains(DN.normalized($0)) }
             checking = false
             guard !Task.isCancelled else { return }
             if found.isEmpty { start() } else { replacing = found }
@@ -339,10 +337,14 @@ struct LDIFImportSheet: View {
         let existing = self.existing
         task = Task {
             var parents: Set<String> = []
+            // Entries this import created: a file that adds one twice must not
+            // have the second record replace it unseen.
+            var created: Set<String> = []
             for record in records {
                 if Task.isCancelled { break }
-                let outcome = await apply(record, existing: existing)
+                let outcome = await apply(record, existing: existing, createdHere: created.contains(DN.normalized(record.dn)))
                 log.append(outcome)
+                if outcome.ok, case .add = record.change, outcome.message.isEmpty { created.insert(DN.normalized(record.dn)) }
                 if outcome.ok {
                     parents.insert(DN.parent(record.dn) ?? "")
                     if case .modifyDN(_, _, let superior?) = record.change { parents.insert(superior) }
@@ -366,7 +368,7 @@ struct LDIFImportSheet: View {
         }
     }
 
-    private func apply(_ record: LDIFRecord, existing: ExistingEntries) async -> LogLine {
+    private func apply(_ record: LDIFRecord, existing: ExistingEntries, createdHere: Bool) async -> LogLine {
         do {
             switch record.change {
             case .add(let attributes):
@@ -377,6 +379,10 @@ struct LDIFImportSheet: View {
                     // sAMAccountName or UPN; only an existing DN is "already there".
                     let present = try? await session.run { try await $0.read(record.dn, attributes: ["1.1"]) }
                     guard present != nil else { throw error }
+                    if createdHere {
+                        return LogLine(record: record, ok: false,
+                                       message: "this file adds the entry a second time; the earlier record created it, and this one was not applied")
+                    }
                     if existing == .skip { return LogLine(record: record, ok: true, message: "already exists, skipped") }
                     let changes = attributes.filter { $0.baseName.caseInsensitiveCompare("objectClass") != .orderedSame }
                         .map { LDAPModification(.replace, $0.name, $0.values) }
@@ -442,11 +448,11 @@ extension DirectorySession {
                     let found = try await connection.pagedSearch(request, pageSize: pageSize).entries
                     var completed: [LDAPEntry] = []
                     for entry in found { completed.append(try await connection.completingRangedAttributes(entry)) }
-                    return LDIF.parentsFirst(completed)
+                    return completed
                 }
                 let suffix = scope == .base ? "" : (scope == .oneLevel ? "-children" : "-subtree")
                 report("\(entries.count) entries ready.", isError: false)
-                Exporter.saveLDIF(entries, suggestedName: name + suffix)
+                Exporter.saveLDIF(entries, suggestedName: name + suffix, parentsFirst: true)
             } catch {
                 report(error.localizedDescription, isError: true)
             }

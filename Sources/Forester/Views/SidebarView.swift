@@ -59,8 +59,11 @@ struct SidebarView: View {
                     .disabled(selection == nil)
                     Button("Export All Connections…") { exportConnections(model.store.profiles) }
                         .disabled(model.store.profiles.isEmpty)
-                    Divider()
-                    SettingsLink { Text("Keep Connections in iCloud Drive…") }
+                    // The App Store build cannot reach iCloud Drive's folder; its Settings leave the switch out.
+                    if !ForesterInfo.fromAppStore {
+                        Divider()
+                        SettingsLink { Text("Keep Connections in iCloud Drive…") }
+                    }
                 } label: { Image(systemName: "ellipsis.circle").frame(width: 22, height: 22) }
                     .menuIndicator(.hidden)
                     .fixedSize()

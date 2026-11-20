@@ -33,7 +33,11 @@ final class InspectorModel {
     /// The entry is in another domain of the forest (found by a search of the
     /// whole forest), which this connection's server does not hold.
     private(set) var otherDomain: String?
-    var tab: Tab = .overview
+    /// The memberships are read when their tab is shown, not for every entry
+    /// passed over in the tree: a group's can take dozens of searches.
+    var tab: Tab = .overview {
+        didSet { if tab == .membership { loadMembershipIfNeeded() } }
+    }
 
     let membership = MembershipModel()
 
@@ -62,8 +66,12 @@ final class InspectorModel {
     func load(_ dn: String?) {
         task?.cancel()
         membership.clear()
+        // Read again after a change, the entry stays on screen until the new
+        // read arrives: a sheet open on it (a refused save, a refused
+        // password) would otherwise close and lose what was typed.
+        let sameEntry = dn != nil && self.dn != nil && DN.isSame(dn!, self.dn!)
         self.dn = dn
-        entry = nil
+        if !sameEntry { entry = nil }
         error = nil
         otherDomain = nil
         guard let dn, let session else { loading = false; return }
@@ -104,7 +112,7 @@ final class InspectorModel {
                 self.entry = found
                 self.kind = ObjectKind.classify(found)
                 if !self.showsMembership, self.tab == .membership { self.tab = .overview }
-                if self.showsMembership { self.membership.load(found, kind: self.kind, session: session) }
+                self.loadMembershipIfNeeded()
             } catch {
                 guard let self, !Task.isCancelled else { return }
                 self.loading = false
@@ -115,6 +123,11 @@ final class InspectorModel {
 
     func reload() {
         load(dn)
+    }
+
+    private func loadMembershipIfNeeded() {
+        guard tab == .membership, showsMembership, let entry, let session, !membership.holds(entry) else { return }
+        membership.load(entry, kind: kind, session: session)
     }
 }
 
@@ -186,6 +199,11 @@ final class MembershipModel {
         error = nil
         nestedNote = nil
         entry = nil
+    }
+
+    /// Memberships of this very entry are shown or being read.
+    func holds(_ entry: LDAPEntry) -> Bool {
+        self.entry.map { DN.isSame($0.dn, entry.dn) } == true
     }
 
     func load(_ entry: LDAPEntry, kind: ObjectKind, session: DirectorySession) {
@@ -450,14 +468,12 @@ final class MembershipModel {
                 let direct = current.strings("memberOf")
                 next = direct.isEmpty ? try await groupsContaining(current, session: session) : direct
             }
-            for dn in next where seen.insert(DN.normalized(dn)).inserted {
-                order.append(dn)
-                let attributes = members ? ["objectClass", "member", "uniqueMember"] : ["objectClass", "memberOf", "uid"]
-                if let entry = try await session.run({ try await $0.read(dn, attributes: attributes) }),
-                   !members || ObjectKind.classify(entry) == .group {
-                    queue.append(entry)
-                }
-            }
+            let fresh = next.filter { seen.insert(DN.normalized($0)).inserted }
+            order += fresh
+            // Read together, not one after another: only groups lead further.
+            let attributes = members ? ["objectClass", "member", "uniqueMember"] : ["objectClass", "memberOf", "uid"]
+            let read = try await session.run { try await $0.readEach(fresh, attributes: attributes) }
+            queue += read.filter { !members || ObjectKind.classify($0) == .group }
         }
         return order
     }
@@ -480,14 +496,28 @@ final class MembershipModel {
                     roots.filter { DN.isWithin(dn, $0) }.max { DN.components($0).count < DN.components($1).count } ?? ""
                 }
             }
+            // Several batches in flight at once (the connection pipelines them):
+            // one after another, a group of thousands took seconds over a VPN.
+            var requests: [LDAPSearchRequest] = []
             for (root, dns) in byRoot where !root.isEmpty {
                 for start in stride(from: 0, to: dns.count, by: 40) {
-                    try Task.checkCancellation()
                     let batch = dns[start..<min(start + 40, dns.count)]
                     let filter = LDAPFilter.or(batch.map { .equality(attribute, Array($0.utf8)) })
-                    let request = LDAPSearchRequest(base: root, scope: .subtree, filter: filter, attributes: Self.lookupAttributes)
-                    let result = try await session.run { try await $0.search(request) }
-                    for entry in result.entries { found[DN.normalized(entry.dn)] = entry }
+                    requests.append(LDAPSearchRequest(base: root, scope: .subtree, filter: filter, attributes: Self.lookupAttributes))
+                }
+            }
+            try await withThrowingTaskGroup(of: [LDAPEntry].self) { group in
+                var next = 0
+                func start() {
+                    let request = requests[next]
+                    next += 1
+                    group.addTask { try await session.run { try await $0.search(request) }.entries }
+                }
+                while next < min(6, requests.count) { start() }
+                while let entries = try await group.next() {
+                    try Task.checkCancellation()
+                    for entry in entries { found[DN.normalized(entry.dn)] = entry }
+                    if next < requests.count { start() }
                 }
             }
         } else {

@@ -95,8 +95,11 @@ struct AttributesView: View {
 
     var body: some View {
         let rows = rows
+        // The rows once per pass: with tens of thousands of values, every
+        // recomputation is a full scan.
+        let selectedRows = selection.isEmpty ? [] : flat(rows).filter { selection.contains($0.id) }
         VStack(spacing: 0) {
-            toolbar
+            toolbar(selectedRows)
             Table(rows, children: \.children, selection: $selection) {
                 TableColumn("Attribute") { row in
                     HStack(spacing: 4) {
@@ -150,7 +153,7 @@ struct AttributesView: View {
         }
     }
 
-    private var toolbar: some View {
+    private func toolbar(_ selectedRows: [AttributeRow]) -> some View {
         HStack(spacing: 8) {
             TextField("Filter attributes and values", text: $filter)
                 .textFieldStyle(.roundedBorder)
@@ -174,10 +177,6 @@ struct AttributesView: View {
             }
         }
         .padding(10)
-    }
-
-    private var selectedRows: [AttributeRow] {
-        flat(rows).filter { selection.contains($0.id) }
     }
 
     private var deleteTitle: String { "Delete \(Self.describe(Self.plan(confirmingDelete)))?" }

@@ -174,8 +174,9 @@ import Testing
             _ = ADValues.sidString(data); _ = ADValues.guidString(data)
             if let sd = try? SecurityDescriptor(data: data) {
                 var copy = sd
-                copy.setUserCannotChangePassword(true)
-                #expect((try? SecurityDescriptor(data: copy.encoded()))?.userCannotChangePassword == true)
+                if (try? copy.setUserCannotChangePassword(true)) != nil, let encoded = try? copy.encoded() {
+                    #expect((try? SecurityDescriptor(data: encoded))?.userCannotChangePassword == true)
+                }
             }
             let text = String(decoding: bytes, as: UTF8.self)
             _ = ADValues.generalizedTime(text); _ = ADValues.sidData(text); _ = ADValues.guidData(text)

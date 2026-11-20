@@ -5,22 +5,47 @@ import AppKit
 import LDAPKit
 import UniformTypeIdentifiers
 
-/// Saves entries as LDIF or CSV through the standard save panel.
+/// Saves entries as LDIF or CSV through the standard save panel. The panel
+/// comes first and the file is built after, off the main thread: tens of
+/// thousands of entries take seconds to write out, and none of it is wasted
+/// on a panel the person cancels.
 @MainActor
 enum Exporter {
-    static func saveLDIF(_ entries: [LDAPEntry], suggestedName: String) {
-        save(LDIF.document(entries), name: "\(suggestedName).ldif", type: UTType(filenameExtension: "ldif") ?? .plainText)
+    /// `parentsFirst` orders a subtree so the file imports again (`LDIF.parentsFirst`).
+    static func saveLDIF(_ entries: [LDAPEntry], suggestedName: String, parentsFirst: Bool = false) {
+        guard let url = destination(name: "\(suggestedName).ldif", type: UTType(filenameExtension: "ldif") ?? .plainText) else { return }
+        write(to: url) { LDIF.document(parentsFirst ? LDIF.parentsFirst(entries) : entries) }
     }
 
     static func saveCSV(_ entries: [LDAPEntry], attributes: [String], suggestedName: String) {
-        save(csv(entries, attributes: attributes), name: "\(suggestedName).csv", type: .commaSeparatedText)
+        guard let url = destination(name: "\(suggestedName).csv", type: .commaSeparatedText) else { return }
+        write(to: url) { csv(entries, attributes: attributes) }
+    }
+
+    private static func destination(name: String, type: UTType) -> URL? {
+        let panel = NSSavePanel()
+        panel.nameFieldStringValue = name
+        panel.allowedContentTypes = [type]
+        panel.canCreateDirectories = true
+        guard panel.runModal() == .OK else { return nil }
+        return panel.url
+    }
+
+    private static func write(to url: URL, _ text: @escaping @Sendable () -> String) {
+        Task.detached(priority: .userInitiated) {
+            do {
+                try text().write(to: url, atomically: true, encoding: .utf8)
+            } catch {
+                await MainActor.run { _ = NSAlert(error: error).runModal() }
+            }
+        }
     }
 
     /// One row per entry, DN first. Multi-valued attributes are joined with "; ".
     /// SIDs and GUIDs are written in their text form and Windows timestamps as
     /// ISO 8601, so a spreadsheet can sort and filter them; other binary values
     /// are base64.
-    static func csv(_ entries: [LDAPEntry], attributes: [String]) -> String {
+    nonisolated static func csv(_ entries: [LDAPEntry], attributes: [String]) -> String {
         let iso = ISO8601DateFormatter()
         func cell(_ attribute: String, _ value: Data) -> String {
             let formatted = AttributeFormatter.format(attribute, value)

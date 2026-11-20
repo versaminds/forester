@@ -29,7 +29,11 @@ without the user meaning to. For example:
 - a crafted server response that crashes Forester or makes it misbehave
 - an LDIF file that does something other than what the import summary shows
 - a saved password sent to a server, port, user or certificate setting other
-  than the one it was saved for
+  than the one it was saved for. By design, and only over TLS to certificates
+  this Mac trusts, the password in use also goes to the same domain's global
+  catalog (ports 3268 and 3269), to its other domain controllers when you ask
+  for an account's status on each, and to another domain of the forest you
+  open from it
 - a Kerberos sign-in without TLS, or one whose ticket could be relayed to
   another connection (the TLS channel binding)
 - an update installed that is not signed with VersaMinds' update key, or the

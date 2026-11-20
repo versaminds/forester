@@ -56,7 +56,9 @@ struct InspectorView: View {
                     case .ldif: LDIFView(entry: entry)
                     }
                 }
-                .id(entry.dn)
+                // The connection too: the same DN on two connections (two DCs,
+                // or two accounts) must not keep the other's replication data or rights.
+                .id("\(session.id)|\(entry.dn)")
             } else if inspector.loading {
                 ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {

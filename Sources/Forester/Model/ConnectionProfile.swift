@@ -322,16 +322,35 @@ final class ProfileStore {
             profiles = try JSONDecoder().decode([ConnectionProfile].self, from: data ?? Data())
             loadedModification = (try? FileManager.default.attributesOfItem(atPath: url.path))?[.modificationDate] as? Date
             loadError = nil
+            unsavedUnreadable = false
         } catch {
-            // Keep the unreadable file rather than overwrite it on the next save.
-            let backup = url.deletingPathExtension().appendingPathExtension("unreadable.json")
-            try? FileManager.default.removeItem(at: backup)
-            try? FileManager.default.copyItem(at: url, to: backup)
-            loadError = "Saved connections could not be read (\(error.localizedDescription)). A copy was kept as \(backup.lastPathComponent)."
+            // The next save replaces the file (and, in iCloud Drive, every
+            // Mac's copy), so each unreadable version is kept first, under a
+            // name of its own: a newer Forester elsewhere may have written it.
+            let modified = (try? FileManager.default.attributesOfItem(atPath: url.path))?[.modificationDate] as? Date
+            if modified == nil || modified != backedUpModification {
+                let stamp = ISO8601DateFormatter.string(from: Date(), timeZone: .current, formatOptions: [.withFullDate, .withTime])
+                    .replacingOccurrences(of: ":", with: "")
+                let backup = url.deletingPathExtension().appendingPathExtension("unreadable-\(stamp).json")
+                if (try? FileManager.default.copyItem(at: url, to: backup)) != nil {
+                    backedUpModification = modified
+                    unsavedUnreadable = false
+                    loadError = "Saved connections could not be read (\(error.localizedDescription)). A copy was kept as \(backup.lastPathComponent)."
+                } else {
+                    unsavedUnreadable = true
+                    loadError = "Saved connections could not be read (\(error.localizedDescription)), and no copy could be made, so changes are not saved over them."
+                }
+            }
         }
     }
 
+    /// The last version that could not be read, already kept as a copy.
+    @ObservationIgnored private var backedUpModification: Date?
+    /// The file could be neither read nor copied: saving would lose it.
+    @ObservationIgnored private var unsavedUnreadable = false
+
     private func persist() {
+        guard !unsavedUnreadable else { return }
         do {
             try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
             let encoder = JSONEncoder()
@@ -456,19 +475,14 @@ enum Keychain {
         } else if let found = read(id, service: service) {
             saved = found
         } else if let former = read(id, service: formerService) {
-            // From before the rename, and from before passwords were tied to a
-            // connection: tied now, to this one.
-            setPassword(former.password, for: profile)
-            if read(id, service: service)?.password == former.password { SecItemDelete(query(id, service: formerService) as CFDictionary) }
-            saved = Saved(password: former.password, connection: expected)
+            saved = Saved(password: former.password, connection: nil)
         } else {
             return .none
         }
-        if saved.connection == nil {
-            // Saved before passwords were tied to a connection: tie it to this one.
-            SecItemUpdate(query(id) as CFDictionary, [kSecAttrGeneric as String: expected] as CFDictionary)
-            saved.connection = expected
-        }
+        // Saved under the former name or before passwords were tied to a
+        // connection, it says nothing about the server it was meant for: the
+        // profile could have been changed since. It is asked for again, then
+        // saved tied to this connection, rather than sent where it now points.
         lock.withLock { known[id] = saved }
         return saved.connection == expected ? .found(saved.password) : .savedForAnotherConnection
     }

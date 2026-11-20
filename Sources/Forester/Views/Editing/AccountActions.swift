@@ -153,7 +153,7 @@ enum AccountActions {
                 session.report("The account's security descriptor could not be read.", isError: true)
                 return false
             }
-            descriptor.setUserCannotChangePassword(on)
+            try descriptor.setUserCannotChangePassword(on)
             let data = try descriptor.encoded()
             return await session.change(on ? "The user can no longer change the password." : "The user may change the password.",
                                         undo: .values(entry.dn, ["nTSecurityDescriptor"], controls: [.sdFlags(4)])) {

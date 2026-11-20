@@ -227,12 +227,17 @@ public enum LDIFParser {
     }
 
     static func attributes(_ lines: ArraySlice<Line>, base: LDIFFileReferences) throws -> [LDAPAttribute] {
+        // Found by a dictionary, not a scan per line: a file with thousands of
+        // names was quadratic, and an import's file can come from anyone.
         var attributes: [LDAPAttribute] = []
+        var indexByName: [String: Int] = [:]
         for line in lines {
             let (name, value) = try split(line, base: base)
-            if let index = attributes.firstIndex(where: { $0.name.caseInsensitiveCompare(name) == .orderedSame }) {
+            let key = name.lowercased()
+            if let index = indexByName[key] {
                 attributes[index].values.append(value)
             } else {
+                indexByName[key] = attributes.count
                 attributes.append(LDAPAttribute(name: name, values: [value]))
             }
         }

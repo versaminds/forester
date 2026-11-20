@@ -12,6 +12,7 @@ struct DeleteEntrySheet: View {
     @State private var descendants: Int?
     /// The count stopped early (the server's limits, or 100,000), so there may be more.
     @State private var atLeast = false
+    @State private var countError: String?
     @State private var counting = true
     @State private var deleting = false
     @State private var progress: (Int, Int)?
@@ -31,6 +32,11 @@ struct DeleteEntrySheet: View {
             }
             if counting {
                 HStack { ProgressView().controlSize(.small); Text("Checking for entries beneath it…").foregroundStyle(.secondary) }
+            } else if let countError {
+                Label("Forester could not count the entries beneath it (\(countError)). Any there are will be deleted too.",
+                      systemImage: "exclamationmark.triangle.fill")
+                    .foregroundStyle(.orange)
+                TextField("Type \(name) to confirm", text: $confirmText).textFieldStyle(.roundedBorder)
             } else if let descendants, descendants > 0 {
                 Label("It contains \(atLeast ? "at least " : "")\(descendants.formatted()) \(descendants == 1 && !atLeast ? "entry" : "entries"), which will be deleted too.",
                       systemImage: "exclamationmark.triangle.fill")
@@ -53,10 +59,10 @@ struct DeleteEntrySheet: View {
                 Spacer()
                 Button("Cancel", role: .cancel) { dismiss() }.keyboardShortcut(.cancelAction).disabled(deleting)
                 Button(role: .destructive) { delete() } label: {
-                    if deleting { ProgressView().controlSize(.small) } else { Text((descendants ?? 0) > 0 ? "Delete All" : "Delete") }
+                    if deleting { ProgressView().controlSize(.small) } else { Text(mayHaveChildren ? "Delete All" : "Delete") }
                 }
                 .keyboardShortcut(.defaultAction)
-                .disabled(counting || deleting || ((descendants ?? 0) > 0 && confirmText != name))
+                .disabled(counting || deleting || (mayHaveChildren && confirmText != name))
             }
         }
         .padding(20)
@@ -64,11 +70,19 @@ struct DeleteEntrySheet: View {
         .task { await count() }
     }
 
+    /// When the count failed, nothing is assumed: the subtree path deletes
+    /// a leaf as well, behind the typed confirmation.
+    private var mayHaveChildren: Bool { (descendants ?? 0) > 0 || countError != nil }
+
     private func count() async {
         let request = LDAPSearchRequest(base: dn, scope: .subtree, attributes: ["1.1"])
-        let found = try? await session.run { try await $0.pagedSearch(request, pageSize: 500, limit: 100_000) }
-        descendants = max(0, (found?.entries.count ?? 1) - 1)
-        atLeast = found.map { $0.stoppedAtLimit || $0.result.code != .success } ?? false
+        do {
+            let found = try await session.run { try await $0.pagedSearch(request, pageSize: 500, limit: 100_000) }
+            descendants = max(0, found.entries.count - 1)
+            atLeast = found.stoppedAtLimit || found.result.code != .success
+        } catch {
+            countError = error.localizedDescription
+        }
         counting = false
     }
 
@@ -76,8 +90,8 @@ struct DeleteEntrySheet: View {
         deleting = true
         error = nil
         let parent = DN.parent(dn) ?? ""
-        let useTreeDelete = (descendants ?? 0) > 0 && session.server?.supportsTreeDelete == true
-        let hasChildren = (descendants ?? 0) > 0
+        let useTreeDelete = mayHaveChildren && session.server?.supportsTreeDelete == true
+        let hasChildren = mayHaveChildren
         Task {
             let gone = UndoPlan.impossible(dn: dn, why: "A deleted entry cannot be brought back here. Active Directory keeps deleted objects in its Recycle Bin when that is turned on.")
             let ok = await session.change("Deleted \(name).", refreshing: [parent], select: parent.isEmpty ? nil : parent, undo: gone) { connection in

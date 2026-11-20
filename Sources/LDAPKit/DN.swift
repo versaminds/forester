@@ -68,8 +68,9 @@ public enum DN {
     /// Trims surrounding whitespace, except a space that is escaped: in
     /// `OU=Sales\ ` the space belongs to the value.
     static func trimUnescaped(_ text: String) -> String {
-        var chars = Array(text)
-        while let first = chars.first, first.isWhitespace { chars.removeFirst() }
+        // Dropped in one step: removing them one by one from the front is
+        // quadratic, and a server's DN can carry a megabyte of spaces.
+        var chars = Array(text.drop { $0.isWhitespace })
         while let last = chars.last, last.isWhitespace {
             var backslashes = 0
             var index = chars.count - 2

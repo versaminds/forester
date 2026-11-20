@@ -155,7 +155,9 @@ struct AttributeEditorSheet: View {
         .sheet(isPresented: $addingMembers) {
             DNPickerSheet(session: session, allowsMultiple: true) { picked in
                 values.removeAll { $0.data.isEmpty }
-                for dn in picked where !values.contains(where: { DN.isSame($0.text, dn) }) {
+                // One set, not a scan of every value per DN picked: a group can hold thousands.
+                var present = Set(values.map { DN.normalized($0.text) })
+                for dn in picked where present.insert(DN.normalized(dn)).inserted {
                     values.append(EditableValue(data: Data(dn.utf8)))
                 }
             }
@@ -196,7 +198,8 @@ struct AttributeEditorSheet: View {
             GroupTypeEditor(value: integerBinding(at: 0))
         default:
             ScrollView {
-                VStack(alignment: .leading, spacing: 8) {
+                // Lazy: a group's member list can hold tens of thousands of values.
+                LazyVStack(alignment: .leading, spacing: 8) {
                     ForEach($values) { $value in
                         HStack(alignment: kind == .text(multiline: true) ? .top : .center, spacing: 6) {
                             ValueField(kind: kind, value: $value, attribute: attribute) { pickingDN = value.id }
@@ -257,7 +260,11 @@ struct AttributeEditorSheet: View {
 
     private var cleaned: [Data] {
         var seen: Set<Data> = []
-        return values.map(\.data).filter { !$0.isEmpty && seen.insert($0).inserted }
+        let numeric = kind == .integer || kind == .userAccountControl || kind == .groupType
+        return values.map(\.data)
+            // A number is checked trimmed, so it is sent trimmed: " 42" is invalid syntax to the server.
+            .map { numeric ? Data(String(decoding: $0, as: UTF8.self).trimmingCharacters(in: .whitespaces).utf8) : $0 }
+            .filter { !$0.isEmpty && seen.insert($0).inserted }
     }
 
     private var validationProblem: String? {
@@ -283,8 +290,10 @@ struct AttributeEditorSheet: View {
             if new == original { return [] }
             return new.isEmpty ? [LDAPModification(.delete, attribute)] : [LDAPModification(.replace, attribute, new)]
         }
-        let removed = original.filter { !new.contains($0) }
-        let added = new.filter { !original.contains($0) }
+        // Sets, so a large member list is compared in one pass, not value by value.
+        let newSet = Set(new), originalSet = Set(original)
+        let removed = original.filter { !newSet.contains($0) }
+        let added = new.filter { !originalSet.contains($0) }
         var changes: [LDAPModification] = []
         if !removed.isEmpty {
             changes.append(removed.count == original.count && added.isEmpty
@@ -595,7 +604,15 @@ struct AttributePicker: View {
                 .textFieldStyle(.roundedBorder)
                 .padding(12)
                 .onSubmit {
-                    if let first = candidates.first { choose(first.name) } else if !filter.isEmpty { choose(filter) }
+                    // The name typed when it is one, so "mail" opens mail and not mailNickname.
+                    let typed = filter.trimmingCharacters(in: .whitespaces)
+                    if let exact = candidates.first(where: { $0.name.caseInsensitiveCompare(typed) == .orderedSame }) {
+                        choose(exact.name)
+                    } else if let first = candidates.first {
+                        choose(first.name)
+                    } else if !typed.isEmpty {
+                        choose(typed)
+                    }
                 }
             if session.schema == nil {
                 Text("The server's schema could not be read, so any name can be typed.").font(.caption).foregroundStyle(.secondary)

@@ -53,7 +53,10 @@ struct SettingsView: View {
                         .font(.caption).foregroundStyle(.secondary)
                 }
                 LabeledContent("Stored in") {
-                    Button(model.store.url.deletingLastPathComponent().path.replacingOccurrences(of: NSHomeDirectory(), with: "~")) {
+                    // In the sandbox NSHomeDirectory() is the app's container, not
+                    // the home folder, so "~/Library/…" would name another folder.
+                    let folder = model.store.url.deletingLastPathComponent().path
+                    Button(ForesterInfo.fromAppStore ? folder : folder.replacingOccurrences(of: NSHomeDirectory(), with: "~")) {
                         NSWorkspace.shared.activateFileViewerSelecting([model.store.url])
                     }
                     .buttonStyle(.link)

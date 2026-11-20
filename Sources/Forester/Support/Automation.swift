@@ -531,6 +531,7 @@ enum Automation {
             }
             session.inspector.tab = tab
             if tab == .membership {
+                try await waitFor("memberships for the pictures") { !session.inspector.membership.loading }
                 session.inspector.membership.loadNested()
                 try await waitFor("nested members for the pictures") { session.inspector.membership.nested != nil }
             }
@@ -854,6 +855,8 @@ enum Automation {
         try snapshot("05-user-attributes", output)
 
         session.inspector.tab = .membership
+        // Memberships are read when their tab is shown.
+        try await waitFor("memberships") { !session.inspector.membership.loading && session.inspector.membership.error == nil }
         session.inspector.membership.loadNested()
         try await waitFor("nested groups") { session.inspector.membership.nested != nil }
         try await settle()

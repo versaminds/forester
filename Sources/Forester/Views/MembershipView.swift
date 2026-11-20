@@ -12,6 +12,10 @@ import SwiftUI
 struct MembershipView: View {
     let session: DirectorySession
     let membership: MembershipModel
+    /// What is typed, and what the rows are filtered by: the second follows
+    /// the first once typing pauses, so a group of tens of thousands of
+    /// members is not scanned on every keystroke.
+    @State private var typed = ""
     @State private var filter = ""
 
     var body: some View {
@@ -26,7 +30,11 @@ struct MembershipView: View {
         } else {
             VStack(spacing: 0) {
                 if total > 15 {
-                    TextField("Filter", text: $filter).textFieldStyle(.roundedBorder).padding(10)
+                    TextField("Filter", text: $typed).textFieldStyle(.roundedBorder).padding(10)
+                        .task(id: typed) {
+                            if !typed.isEmpty { try? await Task.sleep(for: .milliseconds(150)) }
+                            if !Task.isCancelled { filter = typed }
+                        }
                 }
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 0, pinnedViews: [.sectionHeaders]) {
@@ -63,17 +71,20 @@ struct MembershipView: View {
     /// A group can be listed both as a member and among the nested members;
     /// ids must be unique across the whole stack, so each carries its section.
     private struct Keyed: Identifiable {
-        let id: String
+        struct Key: Hashable {
+            let section: String
+            let ref: String
+        }
+        let id: Key
         let ref: MembershipModel.Ref
     }
 
     private func keyed(_ refs: [MembershipModel.Ref], in section: String) -> [Keyed] {
-        refs.filter(matches).map { Keyed(id: "\(section)/\($0.id)", ref: $0) }
-    }
-
-    private func matches(_ ref: MembershipModel.Ref) -> Bool {
-        filter.isEmpty || ref.name.localizedCaseInsensitiveContains(filter) || ref.detail.localizedCaseInsensitiveContains(filter)
-            || ref.dn.localizedCaseInsensitiveContains(filter)
+        let needle = filter.trimmingCharacters(in: .whitespaces)
+        let shown = needle.isEmpty ? refs : refs.filter { ref in
+            [ref.name, ref.detail, ref.dn].contains { $0.range(of: needle, options: [.caseInsensitive, .diacriticInsensitive]) != nil }
+        }
+        return shown.map { Keyed(id: Keyed.Key(section: section, ref: $0.id), ref: $0) }
     }
 
     @ViewBuilder

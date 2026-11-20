@@ -98,8 +98,12 @@ public struct SecurityDescriptor: Equatable, Sendable {
     /// Replaces the explicit Change Password ACEs for Everyone and SELF with
     /// deny ACEs (cannot change) or allow ACEs (can change), keeping the DACL
     /// in canonical order: explicit deny, explicit allow, then inherited.
-    public mutating func setUserCannotChangePassword(_ cannotChange: Bool) {
-        var aces = dacl?.aces ?? []
+    ///
+    /// A descriptor without a DACL (everyone may do anything) is refused: the
+    /// two entries alone would become the object's whole access list.
+    public mutating func setUserCannotChangePassword(_ cannotChange: Bool) throws {
+        guard let dacl else { throw SecurityDescriptorError.noAccessList }
+        var aces = dacl.aces
         aces.removeAll(where: Self.isChangePasswordACE)
         let type = cannotChange ? ACE.accessDeniedObject : ACE.accessAllowedObject
         let new = [Self.everyone, Self.principalSelf].map {
@@ -109,7 +113,7 @@ public struct SecurityDescriptor: Equatable, Sendable {
         let inherited = aces.filter(\.isInherited)
         let denies = explicit.filter(\.isDeny), allows = explicit.filter { !$0.isDeny }
         let ordered = cannotChange ? new + denies + allows + inherited : denies + new + allows + inherited
-        dacl = ACL(revision: max(dacl?.revision ?? 4, 4), aces: ordered)
+        self.dacl = ACL(revision: max(dacl.revision, 4), aces: ordered)
     }
 
     // MARK: Decoding
@@ -121,10 +125,12 @@ public struct SecurityDescriptor: Equatable, Sendable {
     private static func le16(_ v: UInt16) -> [UInt8] { [UInt8(v & 0xFF), UInt8(v >> 8)] }
     private static func le32(_ v: UInt32) -> [UInt8] { (0..<4).map { UInt8(truncatingIfNeeded: v >> (8 * $0)) } }
 
-    private static func sid(_ b: [UInt8], _ offset: Int) throws -> (string: String, length: Int) {
-        guard offset + 8 <= b.count else { throw SecurityDescriptorError.truncated }
+    /// The SID at `offset`, which must end by `end` (an ACE's own end, or the data's).
+    private static func sid(_ b: [UInt8], _ offset: Int, end: Int? = nil) throws -> (string: String, length: Int) {
+        let limit = min(end ?? b.count, b.count)
+        guard offset + 8 <= limit else { throw SecurityDescriptorError.truncated }
         let length = 8 + Int(b[offset + 1]) * 4
-        guard offset + length <= b.count, let string = ADValues.sidString(Data(b[offset..<(offset + length)])) else {
+        guard offset + length <= limit, let string = ADValues.sidString(Data(b[offset..<(offset + length)])) else {
             throw SecurityDescriptorError.badSID
         }
         return (string, length)
@@ -148,7 +154,7 @@ public struct SecurityDescriptor: Equatable, Sendable {
             let mask = u32(b, position + 4)
             switch type {
             case ACE.accessAllowed, ACE.accessDenied, 0x02:
-                aces.append(ACE(type: type, flags: flags, mask: mask, sid: try sid(b, position + 8).string))
+                aces.append(ACE(type: type, flags: flags, mask: mask, sid: try sid(b, position + 8, end: position + size).string))
             case ACE.accessAllowedObject, ACE.accessDeniedObject, 0x07:
                 // Everything an object ACE holds must lie inside its own size.
                 let end = position + size
@@ -168,7 +174,7 @@ public struct SecurityDescriptor: Equatable, Sendable {
                 }
                 guard cursor + 8 <= end else { throw SecurityDescriptorError.truncated }
                 aces.append(ACE(type: type, flags: flags, mask: mask, objectType: objectType,
-                                inheritedObjectType: inheritedType, sid: try sid(b, cursor).string))
+                                inheritedObjectType: inheritedType, sid: try sid(b, cursor, end: end).string))
             default:
                 aces.append(ACE(type: type, flags: flags, mask: mask, sid: "", raw: Data(b[position..<(position + size)])))
             }
@@ -191,7 +197,8 @@ public struct SecurityDescriptor: Equatable, Sendable {
                 body += [UInt8](ADValues.guidData(guid.uuidString) ?? Data(count: 16))
             }
         }
-        body += [UInt8](ADValues.sidData(ace.sid) ?? Data())
+        guard let sid = ADValues.sidData(ace.sid) else { throw SecurityDescriptorError.badSID }
+        body += [UInt8](sid)
         guard 4 + body.count <= Int(UInt16.max) else { throw SecurityDescriptorError.tooLarge }
         return [ace.type, ace.flags] + le16(UInt16(4 + body.count)) + body
     }
@@ -206,6 +213,8 @@ public struct SecurityDescriptor: Equatable, Sendable {
 
 public enum SecurityDescriptorError: Error, Equatable {
     case truncated, badSID
+    /// No DACL: there is no access list to change one entry of.
+    case noAccessList
     /// The changed access list would be larger than 64 KB.
     case tooLarge
 }
@@ -215,6 +224,7 @@ extension SecurityDescriptorError: LocalizedError {
         switch self {
         case .truncated: return "The security descriptor is cut short."
         case .badSID: return "The security descriptor holds a malformed SID."
+        case .noAccessList: return "The account's security descriptor has no access list, so Forester leaves it as it is."
         case .tooLarge: return "The account's access list would grow past 64 KB, the most a security descriptor can hold."
         }
     }

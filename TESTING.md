@@ -44,7 +44,7 @@ a month, on a Tuesday, it makes a release (docs/DISTRIBUTION.md, step 5).
 swift test
 ```
 
-This runs 71 unit tests. The 21 tests that need a server are reported as
+This runs 74 unit tests. The 21 tests that need a server are reported as
 *skipped* (step 3), and so are the 5 Kerberos tests, which need the domain
 controller of step 6 and its ticket, and the 4 that time the LDAP client
 against a big directory (step 5, "A big directory"). The unit tests cover:
@@ -167,7 +167,7 @@ With the test directory running:
 FORESTER_TEST_SERVER=1 swift test
 ```
 
-92 tests run, in about 6 seconds (the Kerberos tests still wait for step 6,
+95 tests run, in about 6 seconds (the Kerberos tests still wait for step 6,
 and the timing tests for a big directory). The 21 against the server are in two
 suites.
 

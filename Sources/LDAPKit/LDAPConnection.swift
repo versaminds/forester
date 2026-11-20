@@ -230,6 +230,10 @@ public actor LDAPConnection {
         // AD sends an empty page now and then on a slow query; a server that
         // only ever does is not making progress.
         var emptyPages = 0
+        // A server that pages for ever, or answers each page with the same
+        // cookie, would otherwise fill the Mac's memory.
+        var repeatedCookies = 0
+        var bytes = 0
         while true {
             try Task.checkCancellation()
             var page = request
@@ -245,11 +249,21 @@ public actor LDAPConnection {
             total.references += result.references
             total.result = result.result
             progress?(total.entries.count)
+            bytes += result.entries.reduce(0) { sum, entry in
+                sum + entry.dn.utf8.count + entry.attributes.reduce(0) { $0 + $1.name.utf8.count + $1.values.reduce(0) { $0 + $1.count } }
+            }
 
             guard let next = result.responseControls.lazy.compactMap(\.pagedResultsCookie).first else {
                 break // the server does not page; what it sent is everything
             }
+            repeatedCookies = !next.isEmpty && next == cookie ? repeatedCookies + 1 : 0
             cookie = next
+            if total.entries.count > Self.maxEntriesPerSearch || bytes > Self.maxBytesPerSearch || repeatedCookies >= 100 {
+                await releasePagedSearch(request, cookie: cookie)
+                throw LDAPError.protocolError(repeatedCookies >= 100
+                    ? "The server kept answering with the same page; the search was stopped."
+                    : "The search returned more than \(Self.maxEntriesPerSearch.formatted()) entries or \(Self.maxBytesPerSearch / 1_000_000_000) GB; it was stopped. Narrow it with a filter or a smaller base.")
+            }
             if cookie.isEmpty || result.result.code != .success { break }
             emptyPages = result.entries.isEmpty && result.references.isEmpty ? emptyPages + 1 : 0
             if emptyPages >= 1_000 {
@@ -269,6 +283,11 @@ public actor LDAPConnection {
     /// are refused rather than kept.
     static let maxResponsesPerRequest = 1_000_000
 
+    /// What one paged search may gather in all, entries and bytes of values:
+    /// more than any directory a person browses, less than fills a Mac.
+    static let maxEntriesPerSearch = 2_000_000
+    static let maxBytesPerSearch = 2_000_000_000
+
     /// A page size of zero with the last cookie abandons a paged search (RFC 2696 §3).
     private func releasePagedSearch(_ request: LDAPSearchRequest, cookie: [UInt8]) async {
         var release = request
@@ -284,6 +303,35 @@ public actor LDAPConnection {
         } catch let error as LDAPError where error.resultCode == .noSuchObject {
             return nil
         }
+    }
+
+    /// Reads each DN, several requests in flight at once (the connection
+    /// pipelines them), and returns the entries that exist in the order
+    /// asked. One read after another, a few thousand took minutes over a VPN.
+    /// With `skippingErrors`, an entry that cannot be read counts as missing.
+    public func readEach(_ dns: [String], attributes: [String], inFlight: Int = 8,
+                         skippingErrors: Bool = false) async throws -> [LDAPEntry] {
+        var found = [LDAPEntry?](repeating: nil, count: dns.count)
+        try await withThrowingTaskGroup(of: (Int, LDAPEntry?).self) { group in
+            var next = 0
+            func start() {
+                let index = next
+                next += 1
+                group.addTask {
+                    do {
+                        return (index, try await self.read(dns[index], attributes: attributes))
+                    } catch where skippingErrors && !(error is CancellationError) {
+                        return (index, nil)
+                    }
+                }
+            }
+            while next < min(max(1, inFlight), dns.count) { start() }
+            while let (index, entry) = try await group.next() {
+                found[index] = entry
+                if next < dns.count { start() }
+            }
+        }
+        return found.compactMap { $0 }
     }
 
     /// The root DSE: naming contexts, supported controls, and what kind of server this is.

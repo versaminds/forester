@@ -9,6 +9,52 @@ import Testing
 /// be able to do: read files from this Mac, crash the app, or slip a record
 /// or a DN component past the escaping.
 @Suite struct SecurityTests {
+    /// How much longer four times the input takes, the best of three runs each:
+    /// about 4 when linear, 16 when quadratic. Judged by growth, not by the
+    /// clock, so a busy machine does not fail it.
+    static func growth(_ small: Int, _ work: (Int) -> Void) -> Double {
+        func best(_ n: Int) -> Double {
+            (0..<3).map { _ in
+                let start = DispatchTime.now().uptimeNanoseconds
+                work(n)
+                return Double(DispatchTime.now().uptimeNanoseconds - start)
+            }.min()!
+        }
+        return best(small * 4) / max(best(small), 1)
+    }
+
+    // MARK: Inputs built to be slow
+
+    /// A DN from the server with a long run of spaces was trimmed one
+    /// character at a time from the front, quadratic in its length.
+    @Test func dnWithManySpacesStaysLinear() {
+        let ratio = Self.growth(20_000) { n in
+            _ = DN.rdnValue("CN=" + String(repeating: " ", count: n) + "x,DC=example")
+        }
+        #expect(ratio < 9, "trimming grew \(ratio)× for 4× the spaces")
+    }
+
+    /// An LDIF record with thousands of attribute names was grouped by a scan
+    /// per line.
+    @Test func ldifWithManyAttributeNamesStaysLinear() throws {
+        let ratio = Self.growth(2_000) { n in
+            let lines = (0..<n).map { "a\($0): v" }.joined(separator: "\n")
+            _ = try? LDIFParser.parse("dn: cn=x\n" + lines + "\n")
+        }
+        #expect(ratio < 9, "parsing grew \(ratio)× for 4× the names")
+    }
+
+    /// Without a DACL anyone may do anything; changing one entry would write
+    /// an access list of only that entry, so it is refused.
+    @Test func cannotChangePasswordRefusesADescriptorWithoutAnAccessList() throws {
+        var header = [UInt8](repeating: 0, count: 20)
+        header[0] = 1
+        header[3] = 0x80 // self-relative, no DACL present
+        var sd = try SecurityDescriptor(data: Data(header))
+        #expect(sd.dacl == nil)
+        #expect(throws: SecurityDescriptorError.noAccessList) { try sd.setUserCannotChangePassword(true) }
+        #expect(sd.dacl == nil)
+    }
     // MARK: Filters
 
     /// A dynamic group's memberURL is directory data, and parsing and
