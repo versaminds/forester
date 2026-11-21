@@ -224,6 +224,7 @@
     <ul class="ticks columns">
       <li><strong>Find by name</strong> in the toolbar uses Active Directory's own name resolution, so a name, account or mail address all work.</li>
       <li><strong>Results page past the server's limits,</strong> and export to CSV or LDIF with the attributes you choose.</li>
+      <li><strong>Browse another domain of the forest</strong> in the same window, beside your own, and search every domain through the global catalog.</li>
     </ul>
   </div>
 </section>
@@ -281,7 +282,7 @@
       <div class="card">
         <div class="icon"><svg aria-hidden="true"><use href="#i-lock"/></svg></div>
         <h3>Encrypted connections</h3>
-        <p>LDAPS and StartTLS, with the certificate chain and its fingerprint shown before you choose to trust it. Sign in with your Kerberos ticket and no password is typed at all.</p>
+        <p>LDAPS and StartTLS, with the certificate chain and its fingerprint shown before you choose to trust it. Sign in with your Kerberos ticket and no password is typed at all, with a client certificate from your keychain, or with SCRAM-SHA-256.</p>
       </div>
       <div class="card">
         <div class="icon"><svg aria-hidden="true"><use href="#i-cube"/></svg></div>
@@ -347,11 +348,11 @@ cd forester &amp;&amp; scripts/build-app.sh</div>
       </details>
       <details>
         <summary>Can I sign in with Kerberos?</summary>
-        <p>Yes. Forester signs in with the Kerberos ticket your Mac already has, from Ticket Viewer, kinit or your organisation's single sign-on, over LDAPS or StartTLS and bound to that connection, so no password is typed or kept. A name and password, or an anonymous connection, work too.</p>
+        <p>Yes. Forester signs in with the Kerberos ticket your Mac already has, from Ticket Viewer, kinit or your organisation's single sign-on, so no password is typed or kept. Over LDAPS or StartTLS the sign-in is bound to that connection; over plain LDAP Kerberos itself encrypts and signs everything sent after it. A client certificate from your keychain, SCRAM-SHA-256, a name and password, or an anonymous connection work too.</p>
       </details>
       <details>
         <summary>Does it replace Active Directory Users and Computers?</summary>
-        <p>For most of what people use it for on a Mac, yes: finding, reading and changing users, groups and computers, passwords and account options. It shows permissions in words but does not edit them, apart from "user cannot change password", and it does not edit Group Policy.</p>
+        <p>For most of what people use it for on a Mac, yes: finding, reading and changing users, groups and computers, passwords and account options. It shows permissions in words and edits them: add, change or remove an access rule, or change the owner, and Edit › Undo takes it back. It does not edit Group Policy.</p>
       </details>
       <details>
         <summary>What does Forester send to VersaMinds?</summary>

@@ -54,7 +54,7 @@
   <h2>Common questions</h2>
   <p><strong>Why can I not change anything?</strong> Every connection starts read-only, so a stray click cannot change a production directory. Choose <strong>Read-only</strong> in the toolbar to allow changes for that connection.</p>
   <p><strong>Why does Forester ask about a certificate?</strong> Your Mac does not trust the certificate the server showed, often because your organisation's own certificate authority is not installed on this Mac. Choose <strong>Show Certificate…</strong> to check it before you trust it.</p>
-  <p><strong>Kerberos sign-in does not work.</strong> It needs StartTLS or LDAPS, the domain controller's full DNS name as the host, and a Kerberos ticket on this Mac (from Ticket Viewer, <code>kinit</code> or your organisation's single sign-on).</p>
+  <p><strong>Kerberos sign-in does not work.</strong> It needs the domain controller's full DNS name as the host and a Kerberos ticket on this Mac (from Ticket Viewer, <code>kinit</code> or your organisation's single sign-on). Without StartTLS or LDAPS, Forester 1.2 and later encrypt with Kerberos itself; earlier versions need StartTLS or LDAPS.</p>
   <p>More answers are in the <a href="index.html#faq">FAQ</a>. What Forester stores, and where, is in the <a href="privacy.html">privacy policy</a>; who makes it is in the <a href="legal.html">legal notice</a>.</p>
 </main>
 
