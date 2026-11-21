@@ -140,8 +140,13 @@ is shown in words before it is sent, only the access list or only the owner
 is written (never the audit settings, the SACL), inherited rules are never
 touched, a descriptor Forester could not write back byte for byte is left
 alone, and Edit › Undo takes the change back. **Forests:** search every
-domain through the global catalog, list the forest's domains and open any of
-them. Nested membership in one query
+domain through the global catalog, list the forest's domains, and browse any
+of them in the same window: one more root in the tree, read and changed over
+a connection of its own to that domain, signed in as the window is (a
+password only over TLS to a certificate this Mac trusts). Every request goes
+to the domain that holds the entry, and one for a domain that is not open is
+refused rather than sent to another's server. Or open a domain as a
+connection of its own. Nested membership in one query
 (`LDAP_MATCHING_RULE_IN_CHAIN`), primary groups, and groups past 1,500 members
 read in full.
 
@@ -206,11 +211,6 @@ these differences:
   iCloud Drive) rather than CloudKit. Passwords stay in each Mac's own keychain
   and are not synced.
 - **Server statistics on eDirectory** are not read.
-
-## Not yet
-
-- Browsing another domain's tree from the same window: each domain opens as a
-  connection of its own.
 
 ## Testing
 
@@ -301,6 +301,7 @@ Sources/LDAPKit/        the LDAP client
                         a live connection) and certificate pinning
   LDAPConnection.swift  the connection actor: pipelined requests, paging,
                         ranged attributes, timeouts, cancellation
+  ForestRoutes.swift    which domain's connection answers for a DN
   Schema.swift          RFC 4512 schema: attribute types, classes, syntaxes
   LDIF.swift, LDIFParser.swift   LDIF out and in, change records included
   SecurityDescriptor.swift       Windows security descriptors, written back byte for byte

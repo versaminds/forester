@@ -490,7 +490,8 @@ partitions = add(f"CN=Partitions,{config}", ("objectClass", ["top", "crossRefCon
                  ("fSMORoleOwner", ntds("DC01")),
                  ("msDS-EnabledFeature", f"CN=Recycle Bin Feature,CN=Optional Features,CN=Directory Service,CN=Windows NT,CN=Services,{config}"))
 add(f"CN=CORP,{partitions}", ("objectClass", ["top", "crossRef"]), ("cn", "CORP"), ("nCName", BASE),
-    ("nETBIOSName", "CORP"), ("dnsRoot", "corp.example"))
+    ("nETBIOSName", "CORP"), ("dnsRoot", "corp.example"),
+    ("systemFlags", "3"))  # a domain of this forest (bit 2), as AD marks one
 sites = add(f"CN=Sites,{config}", ("objectClass", ["top", "container"]), ("cn", "Sites"))
 for site, site_dcs in [("Default-First-Site-Name", ["DC01"]), ("Brussels", ["DC02"])]:
     site_dn = add(f"CN={site},{sites}", ("objectClass", ["top", "site"]), ("cn", site))
@@ -579,6 +580,54 @@ add(f"cn=everyone,ou=groups,{ORG}", ("objectClass", ["top", "groupOfURLs"]), ("c
     ("description", "Dynamic group of all people"), ("memberURL", f"ldap:///ou=people,{ORG}??one?(objectClass=inetOrgPerson)"))
 
 
+# ── A child domain, child.corp.example, served by a slapd of its own ─────────
+# A forest of two domains, as no Samba domain controller can host a child
+# domain: start.sh serves this suffix from a second slapd, and the forest's
+# configuration lists it, so the app can browse both in one window. Added
+# last, so nothing drawn from rng above changes.
+CHILD = f"DC=child,{BASE}"
+CHILD_SID = (21, 2814097761, 1530922154, 3378201905)
+
+
+def child_sid(rid):
+    return sid_bytes(*CHILD_SID, rid)
+
+
+add(f"CN=CHILD,{partitions}", ("objectClass", ["top", "crossRef"]), ("cn", "CHILD"), ("nCName", CHILD),
+    ("nETBIOSName", "CHILD"), ("dnsRoot", "child.corp.example"), ("systemFlags", "3"))
+add(CHILD, ("objectClass", ["top", "domain", "domainDNS"]), ("dc", "child"),
+    ("objectSid", sid_bytes(*CHILD_SID)), ("objectGUID", guid_bytes(CHILD)), *stamps(600))
+child_users_cn = container(f"CN=Users,{CHILD}", "Users", "Default container for upgraded user accounts")
+child_staff = ou(f"OU=Staff,{CHILD}", "Staff", "People of the child domain")
+
+
+def child_user(given, sn, sam, rid):
+    dn = f"CN={given} {sn},{child_staff}"
+    add(dn, ("objectClass", ["top", "person", "organizationalPerson", "user"]), ("cn", f"{given} {sn}"), ("sn", sn),
+        ("givenName", given), ("displayName", f"{given} {sn}"), ("sAMAccountName", sam),
+        ("userPrincipalName", f"{sam}@child.corp.example"), ("mail", f"{sam}@child.corp.example"),
+        ("objectSid", child_sid(rid)), ("objectGUID", guid_bytes(dn)), ("userAccountControl", str(UAC_NORMAL)),
+        ("primaryGroupID", "513"), ("sAMAccountType", "805306368"), ("accountExpires", "9223372036854775807"),
+        ("nTSecurityDescriptor", security_descriptor()), *stamps(300))
+    return dn
+
+
+lieve = child_user("Lieve", "Peeters", "lieve.peeters", 1104)
+jef = child_user("Jef", "Claes", "jef.claes", 1105)
+mira = child_user("Mira", "Janssens", "mira.janssens", 1106)
+add(f"CN=Domain Users,{child_users_cn}", ("objectClass", ["top", "group"]), ("cn", "Domain Users"),
+    ("sAMAccountName", "Domain Users"), ("groupType", str(GROUP_GLOBAL_SECURITY)), ("sAMAccountType", "268435456"),
+    ("description", "All domain users"), ("objectSid", child_sid(513)),
+    ("objectGUID", guid_bytes(f"CN=Domain Users,{child_users_cn}")), *stamps(600))
+add(f"CN=GG-Child-Team,{child_staff}", ("objectClass", ["top", "group"]), ("cn", "GG-Child-Team"),
+    ("sAMAccountName", "GG-Child-Team"), ("groupType", str(GROUP_GLOBAL_SECURITY)), ("sAMAccountType", "268435456"),
+    ("description", "The child domain's team"), ("member", [lieve, jef]), ("objectSid", child_sid(1107)),
+    ("objectGUID", guid_bytes(f"CN=GG-Child-Team,{child_staff}")), *stamps(300))
+# A universal group in corp.example with a member from each domain.
+group(users_cn, "UG-Forest-Readers", [f"CN=Pieter Van Damme,OU=Engineering,{corp_users}", lieve],
+      gtype=GROUP_UNIVERSAL_SECURITY, description="Readers from every domain of the forest")
+
+
 # ── LDIF writer ──────────────────────────────────────────────────────────────
 def ldif_value(attr, v):
     if isinstance(v, bytes):
@@ -611,9 +660,9 @@ def schema_ready(attrs):
     return out
 
 
-def emit(out, suffix):
+def emit(out, suffix, exclude=None):
     for dn, attrs in entries:
-        if not dn.lower().endswith(suffix.lower()):
+        if not dn.lower().endswith(suffix.lower()) or exclude and dn.lower().endswith(exclude.lower()):
             continue
         attrs = schema_ready(attrs)
         out.write(ldif_value("dn", dn) + "\n")
@@ -697,4 +746,4 @@ if __name__ == "__main__":
     if target == "samba":
         emit_samba(sys.stdout)
     else:
-        emit(sys.stdout, BASE if target == "ad" else ORG)
+        emit(sys.stdout, {"ad": BASE, "child": CHILD}.get(target, ORG), exclude=CHILD if target == "ad" else None)

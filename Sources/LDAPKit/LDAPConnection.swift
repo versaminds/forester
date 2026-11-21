@@ -219,6 +219,34 @@ public actor LDAPConnection {
     }
 
     public func search(_ request: LDAPSearchRequest) async throws -> LDAPSearchResult {
+        if let other = try connection(for: request.base) { return try await other.searchHere(request) }
+        return try await searchHere(request)
+    }
+
+    // MARK: Domains of a forest
+
+    /// Which connection answers for each DN; nil sends everything here.
+    private var routes: ForestRoutes?
+
+    /// From now on a request about a DN another domain holds goes to that
+    /// domain's connection, or is refused when it is not open (`ForestRoutes`).
+    public func setRoutes(_ routes: ForestRoutes?) {
+        self.routes = routes
+    }
+
+    /// The other connection a request about `dn` goes to; nil for this one.
+    /// The other connection makes the request itself, without asking its own
+    /// routes again, so two connections cannot pass a request back and forth.
+    func connection(for dn: String) throws -> LDAPConnection? {
+        guard let routes else { return nil }
+        switch routes.route(dn) {
+        case .here: return nil
+        case .connection(let other): return other === self ? nil : other
+        case .refused(let why): throw LDAPError.otherDomain(why)
+        }
+    }
+
+    func searchHere(_ request: LDAPSearchRequest) async throws -> LDAPSearchResult {
         let op = LDAPCodec.search(base: request.base, scope: request.scope, deref: request.derefAliases,
                                   sizeLimit: request.sizeLimit, timeLimit: request.timeLimit,
                                   typesOnly: request.typesOnly, filter: request.filter, attributes: request.attributes)

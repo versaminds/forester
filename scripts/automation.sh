@@ -15,7 +15,7 @@ set -euo pipefail
 ROOT=${0:A:h:h}
 cd "$ROOT"
 OUT=${1:-/tmp/forester-shots}
-PARTS=${2:-walkthrough,layout,entrysheets,sheets,ui}
+PARTS=${2:-walkthrough,layout,entrysheets,sheets,ui,forest}
 MINIMUM=$(plutil -extract LSMinimumSystemVersion raw "$ROOT/Resources/Info.plist")
 SDK_VERSION=$(xcrun --sdk macosx --show-sdk-version)
 ARGS=(--scratch-path "$ROOT/.build/automation" -Xlinker -platform_version -Xlinker macos -Xlinker "$MINIMUM" -Xlinker "$SDK_VERSION")

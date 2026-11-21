@@ -52,6 +52,9 @@ final class DirectorySession: Identifiable {
     @ObservationIgnored var cachedForestDomains: [ForestDomain]?
     /// The global catalog, for searches of the whole forest.
     @ObservationIgnored var globalCatalogConnection: LDAPConnection?
+    /// Other domains of the forest browsed in this window, each over a
+    /// connection of its own (see ForestBrowsing.swift).
+    var browsedDomains: [BrowsedDomain] = []
     /// Names found for SIDs in permissions.
     @ObservationIgnored var sidNames: [String: (name: String, dn: String?)] = [:]
     /// The editing sheet to show, from whichever place asked for it: the
@@ -116,7 +119,7 @@ final class DirectorySession: Identifiable {
     var canGoBack: Bool { !backStack.isEmpty }
     var canGoForward: Bool { !forwardStack.isEmpty }
 
-    @ObservationIgnored private var connection: LDAPConnection?
+    @ObservationIgnored private(set) var connection: LDAPConnection?
     @ObservationIgnored private var password: String?
     @ObservationIgnored private var connectTask: Task<Void, Never>?
     @ObservationIgnored private var reconnectTask: Task<LDAPConnection, Error>?
@@ -197,11 +200,14 @@ final class DirectorySession: Identifiable {
         undoManager?.removeAllActions(withTarget: self)
         let old = connection
         let catalog = globalCatalogConnection
+        let browsed = browsedDomains.compactMap(\.connection)
         connection = nil
         globalCatalogConnection = nil
+        browsedDomains = []
         Task {
             await old?.close()
             await catalog?.close()
+            for other in browsed { await other.close() }
         }
         phase = .idle
         server = nil
@@ -345,6 +351,13 @@ final class DirectorySession: Identifiable {
                 looksLikeAD = domain.hasObjectClass("domainDNS")
             }
             guard current() else { await fresh.close(); return }
+            // From the first request on, a DN of another domain (a child
+            // domain beneath this one) is never sent to this server; the
+            // forest's domains are added to the routes once read.
+            if info.kind.isMicrosoft || looksLikeAD {
+                await fresh.setRoutes(ForestRoutes(held: info.namingContexts, domains: []))
+            }
+            guard current() else { await fresh.close(); return }
             connection = fresh
             server = info
             isSecure = secure
@@ -362,6 +375,7 @@ final class DirectorySession: Identifiable {
                 Keychain.setPassword(password, for: profile)
             }
             phase = .connected
+            await installRoutes()
             let roots = rootDNs(info)
             await tree.reset(roots: roots)
             search.prepare(base: roots.first ?? "")
@@ -478,7 +492,9 @@ final class DirectorySession: Identifiable {
 
     /// Runs `body` on the connection. If the connection turns out to be gone
     /// (AD drops idle connections after 15 minutes; a VPN reconnects), opens a
-    /// new one and tries once more.
+    /// new one and tries once more. The connection passes a request about
+    /// another browsed domain's DN to that domain's connection (`ForestRoutes`),
+    /// so a loss may be that one's: whichever was lost is opened again.
     func run<T>(_ body: (LDAPConnection) async throws -> T, replayAfterLoss: Bool = true) async throws -> T {
         guard phase == .connected, let current = connection else { throw LDAPError.notConnected }
         let mine = generation
@@ -489,7 +505,8 @@ final class DirectorySession: Identifiable {
         } catch let error as LDAPError where error.isConnectionLoss {
             // Closed by Disconnect (or a new connect), not lost: do not reopen it.
             guard generation == mine, phase == .connected else { throw LDAPError.notConnected }
-            let fresh = try await reconnect(replacing: current, generation: mine)
+            let fresh = await current.isAlive ? current : try await reconnect(replacing: current, generation: mine)
+            await reopenLostDomains()
             // A change is sent again only if it never left: otherwise the server
             // may have made it, and an increment or a password change would
             // happen twice, or fail for having happened.
@@ -521,7 +538,14 @@ final class DirectorySession: Identifiable {
                 await fresh.close()
                 throw LDAPError.notConnected
             }
+            // Routed before anything can use it.
+            await installRoutes(home: fresh)
+            guard generation == mine, phase == .connected else {
+                await fresh.close()
+                throw LDAPError.notConnected
+            }
             connection = fresh
+            await installRoutes()
             return fresh
         } catch {
             if generation == mine, !(error is CancellationError) { phase = .failed(error.localizedDescription) }

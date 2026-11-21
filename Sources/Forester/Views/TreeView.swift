@@ -318,6 +318,25 @@ struct DirectoryOutline: NSViewRepresentable {
             let containers = ActionMenuItem("Show Containers Only") { [tree] in tree.setContainersOnly(!tree.containersOnly) }
             containers.state = tree.containersOnly ? .on : .off
             menu.addItem(containers)
+            // Other domains of the forest, as more roots of this tree.
+            if tree.roots.contains(node.id), session.hasADTools {
+                menu.addItem(.separator())
+                if let browsed = session.browsedDomains.first(where: { DN.normalized($0.domain.dn) == node.id }) {
+                    menu.addItem(ActionMenuItem("Stop Browsing \(browsed.domain.dnsName)") { [session] in
+                        Task { await session.stopBrowsing(browsed.domain.dn) }
+                    })
+                }
+                let others = session.domainsToBrowse
+                if !others.isEmpty {
+                    let item = NSMenuItem(title: "Browse Another Domain of the Forest", action: nil, keyEquivalent: "")
+                    let submenu = NSMenu()
+                    for domain in others {
+                        submenu.addItem(ActionMenuItem(domain.dnsName) { [session] in Task { await session.browse(domain) } })
+                    }
+                    item.submenu = submenu
+                    menu.addItem(item)
+                }
+            }
         }
     }
 }

@@ -121,16 +121,34 @@ extension LDAPConnection {
         guard result.code == .success else { throw LDAPError.server(result, operation: name) }
     }
 
+    // Each operation about a DN goes to the connection of the domain that
+    // holds it (`connection(for:)`), which runs it as its own.
+
     public func modify(_ dn: String, _ changes: [LDAPModification], controls: [LDAPControl] = []) async throws {
+        if let other = try connection(for: dn) { return try await other.modifyHere(dn, changes, controls: controls) }
+        try await modifyHere(dn, changes, controls: controls)
+    }
+
+    func modifyHere(_ dn: String, _ changes: [LDAPModification], controls: [LDAPControl]) async throws {
         guard !changes.isEmpty else { return }
         try await write(LDAPCodec.modify(dn: dn, changes: changes), controls: controls, name: "Modify")
     }
 
     public func add(_ dn: String, attributes: [LDAPAttribute], controls: [LDAPControl] = []) async throws {
+        if let other = try connection(for: dn) { return try await other.addHere(dn, attributes: attributes, controls: controls) }
+        try await addHere(dn, attributes: attributes, controls: controls)
+    }
+
+    func addHere(_ dn: String, attributes: [LDAPAttribute], controls: [LDAPControl]) async throws {
         try await write(LDAPCodec.add(dn: dn, attributes: attributes), controls: controls, name: "Add")
     }
 
     public func delete(_ dn: String, controls: [LDAPControl] = [], timeout: TimeInterval? = nil) async throws {
+        if let other = try connection(for: dn) { return try await other.deleteHere(dn, controls: controls, timeout: timeout) }
+        try await deleteHere(dn, controls: controls, timeout: timeout)
+    }
+
+    func deleteHere(_ dn: String, controls: [LDAPControl], timeout: TimeInterval?) async throws {
         try await write(LDAPCodec.delete(dn: dn), controls: controls, name: "Delete", timeout: timeout)
     }
 
@@ -140,6 +158,21 @@ extension LDAPConnection {
     /// Renames an entry (`newRDN`) and/or moves it under `newSuperior`.
     public func modifyDN(_ dn: String, newRDN: String, deleteOldRDN: Bool = true, newSuperior: String? = nil,
                          controls: [LDAPControl] = []) async throws {
+        let from = try connection(for: dn)
+        if let newSuperior {
+            // AD moves an object to another domain only with its own tool
+            // (cross-domain move), never with an LDAP ModifyDN.
+            guard try connection(for: newSuperior) === from else {
+                throw LDAPError.otherDomain("\(DN.displayName(dn)) cannot be moved to another domain of the forest over LDAP.")
+            }
+        }
+        if let from {
+            return try await from.modifyDNHere(dn, newRDN: newRDN, deleteOldRDN: deleteOldRDN, newSuperior: newSuperior, controls: controls)
+        }
+        try await modifyDNHere(dn, newRDN: newRDN, deleteOldRDN: deleteOldRDN, newSuperior: newSuperior, controls: controls)
+    }
+
+    func modifyDNHere(_ dn: String, newRDN: String, deleteOldRDN: Bool, newSuperior: String?, controls: [LDAPControl]) async throws {
         try await write(LDAPCodec.modifyDN(dn: dn, newRDN: newRDN, deleteOldRDN: deleteOldRDN, newSuperior: newSuperior),
                         controls: controls, name: newSuperior == nil ? "Rename" : "Move")
     }
@@ -177,6 +210,13 @@ extension LDAPConnection {
     /// password; with no `newPassword` the server generates one and returns it.
     @discardableResult
     public func passwordModify(user: String?, oldPassword: String?, newPassword: String?) async throws -> String? {
+        if let user, let other = try connection(for: user) {
+            return try await other.passwordModifyHere(user: user, oldPassword: oldPassword, newPassword: newPassword)
+        }
+        return try await passwordModifyHere(user: user, oldPassword: oldPassword, newPassword: newPassword)
+    }
+
+    func passwordModifyHere(user: String?, oldPassword: String?, newPassword: String?) async throws -> String? {
         let value = LDAPCodec.passwordModifyValue(user: user, oldPassword: oldPassword, newPassword: newPassword)
         let responses = try await perform(LDAPCodec.extended(oid: Self.passwordModifyOID, value: value), name: "Password change")
         guard case .extended(let result, _, let responseValue)? = responses.last?.kind else {

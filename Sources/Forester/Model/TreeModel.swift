@@ -111,6 +111,38 @@ final class TreeModel {
         version += 1
     }
 
+    /// Another domain of the forest, as one more root, before the root DSE.
+    func addRoot(_ dn: String) {
+        let node = Node(dn: dn, name: Self.rootName(dn), kind: .domain, mayHaveChildren: true)
+        guard nodes[node.id] == nil else { return }
+        nodes[node.id] = node
+        roots.insert(node.id, at: roots.firstIndex(of: Self.rootDSEKey) ?? roots.endIndex)
+        version += 1
+    }
+
+    /// Takes a root and everything loaded beneath it out of the tree.
+    func removeRoot(_ id: String) {
+        guard roots.contains(id) else { return }
+        roots.removeAll { $0 == id }
+        for key in nodes.keys where key == id || key.hasSuffix("," + id) { nodes[key] = nil }
+        if let selection, selection == id || selection.hasSuffix("," + id) { self.selection = nil }
+        version += 1
+    }
+
+    func setLoading(_ id: String, _ loading: Bool) {
+        guard let node = nodes[id] else { return }
+        node.isLoading = loading
+        version += 1
+    }
+
+    /// Shown on the node itself (a root whose domain could not be opened).
+    func setError(_ id: String, _ error: String?) {
+        guard let node = nodes[id] else { return }
+        node.error = error
+        if error != nil { node.isExpanded = false }
+        version += 1
+    }
+
     static func rootName(_ dn: String) -> String {
         let parts = DN.components(dn)
         if !parts.isEmpty, parts.allSatisfy({ DN.rdnAttribute($0)?.lowercased() == "dc" }) {

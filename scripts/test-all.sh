@@ -43,7 +43,7 @@ FORESTER_APP_STORE=1 scripts/build-app.sh 2>&1 | tee "$OUT/build-app-store.log"
 
 step "The app driving itself"
 fresh_directory app
-scripts/automation.sh "$OUT/app" walkthrough,layout,entrysheets,sheets,ui 2>&1 | tee "$OUT/app.log"
+scripts/automation.sh "$OUT/app" walkthrough,layout,entrysheets,sheets,ui,forest 2>&1 | tee "$OUT/app.log"
 
 step "The App Store variant in its sandbox"
 fresh_directory sandbox

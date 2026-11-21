@@ -238,9 +238,12 @@ final class PickerTree {
 
     /// Where browsing and searching start: the default naming context, or every one.
     static func bases(_ session: DirectorySession) -> [String] {
-        if !session.profile.baseDN.trimmingCharacters(in: .whitespaces).isEmpty { return [session.profile.baseDN] }
-        if let main = session.server?.defaultNamingContext { return [main] }
-        return session.server?.namingContexts ?? []
+        // The other domains browsed in the window too: a group can take a
+        // member from any domain of the forest.
+        let browsed = session.browsedDomains.filter(\.isOpen).map(\.domain.dn)
+        if !session.profile.baseDN.trimmingCharacters(in: .whitespaces).isEmpty { return [session.profile.baseDN] + browsed }
+        if let main = session.server?.defaultNamingContext { return [main] + browsed }
+        return (session.server?.namingContexts ?? []) + browsed
     }
 
     func start(revealing target: String?) async {

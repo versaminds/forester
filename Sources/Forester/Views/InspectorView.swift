@@ -24,7 +24,19 @@ struct InspectorView: View {
                     Text(error).textSelection(.enabled)
                 } actions: {
                     if let domain = inspector.otherDomain {
-                        Button("Open \(domain)") { Task { await model.openDomain(domain, from: session, select: inspector.dn) } }
+                        if let listed = session.domainsToBrowse.first(where: { $0.dnsName.caseInsensitiveCompare(domain) == .orderedSame }) {
+                            Button("Browse \(domain) in This Window") {
+                                let dn = inspector.dn
+                                Task {
+                                    await session.browse(listed)
+                                    if let dn, session.browsedDomain(containing: dn)?.isOpen == true {
+                                        session.open(dn)
+                                        await session.tree.reveal(dn)
+                                    }
+                                }
+                            }
+                        }
+                        Button("Open \(domain) in a New Connection") { Task { await model.openDomain(domain, from: session, select: inspector.dn) } }
                     } else {
                         Button("Try Again") { inspector.reload() }
                     }

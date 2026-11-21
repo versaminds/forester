@@ -75,7 +75,9 @@ final class InspectorModel {
         error = nil
         otherDomain = nil
         guard let dn, let session else { loading = false; return }
-        if session.hasADTools, !session.holdsEntry(dn) {
+        // An entry of a browsed domain is read like any other: its domain's
+        // connection answers (`ForestRoutes`).
+        if session.hasADTools, !session.holdsEntry(dn), session.browsedDomain(containing: dn) == nil {
             loading = true
             task = Task { [weak self] in
                 let domain = await session.otherDomain(of: dn)
@@ -83,7 +85,7 @@ final class InspectorModel {
                 self.loading = false
                 if let domain {
                     self.otherDomain = domain.dnsName
-                    self.error = "\(DN.displayName(dn)) is in \(domain.dnsName), another domain of the forest. This connection's server does not hold it; open that domain to see it whole."
+                    self.error = "\(DN.displayName(dn)) is in \(domain.dnsName), another domain of the forest. This connection's server does not hold it; browse that domain in this window, or open it in a connection of its own."
                 } else {
                     self.error = "\(DN.displayName(dn)) is not held by this server, and \(DN.dnsDomain(dn) ?? "its domain") is not a domain of this forest, so Forester does not connect there for it."
                 }
@@ -316,7 +318,12 @@ final class MembershipModel {
 
     // MARK: Queries
 
-    private func searchBases(_ session: DirectorySession) -> [String] {
+    private func searchBases(_ session: DirectorySession, for dn: String? = nil) -> [String] {
+        // An entry of a browsed domain is looked up in its own domain, and in
+        // this connection's, where a universal group can hold it.
+        if let dn, let browsed = session.browsedDomain(containing: dn) {
+            return [browsed.domain.dn] + (session.server?.defaultNamingContext.map { [$0] } ?? [])
+        }
         let base = session.profile.baseDN.trimmingCharacters(in: .whitespaces)
         if !base.isEmpty { return [base] }
         if session.isMicrosoft, let defaultNC = session.server?.defaultNamingContext { return [defaultNC] }
@@ -329,7 +336,7 @@ final class MembershipModel {
         if let uid = entry.string("uid") { clauses.append("(&(objectClass=posixGroup)(memberUid=\(LDAPFilter.escape(uid))))") }
         let filter = try LDAPFilter.parse("(|\(clauses.joined()))")
         var found: [String] = []
-        for base in searchBases(session) {
+        for base in searchBases(session, for: entry.dn) {
             let request = LDAPSearchRequest(base: base, scope: .subtree, filter: filter, attributes: ["1.1"])
             let pageSize = session.profile.pageSize
             found += try await session.run { try await $0.pagedSearch(request, pageSize: pageSize, limit: Self.nestedLimit) }
@@ -341,8 +348,8 @@ final class MembershipModel {
     /// AD keeps the primary group (normally Domain Users) out of memberOf and
     /// stores only its RID; find the group with that SID.
     private func primaryGroup(of entry: LDAPEntry, session: DirectorySession) async throws -> Ref? {
-        guard let rid = entry.int("primaryGroupID"), let domainSID = session.domainSID,
-              let sid = ADValues.sidData("\(domainSID)-\(rid)"), let base = session.server?.defaultNamingContext else { return nil }
+        guard let rid = entry.int("primaryGroupID"), let domainSID = session.domainSID(for: entry.dn),
+              let sid = ADValues.sidData("\(domainSID)-\(rid)"), let base = session.domainRoot(for: entry.dn) else { return nil }
         let request = LDAPSearchRequest(base: base, scope: .subtree, filter: .equality("objectSid", [UInt8](sid)),
                                         attributes: Self.lookupAttributes)
         guard let group = try await session.run({ try await $0.search(request) }).entries.first else {
@@ -357,8 +364,8 @@ final class MembershipModel {
     /// Accounts whose primary group is this group; they are not in its member attribute.
     private func primaryMembers(of group: LDAPEntry, session: DirectorySession) async throws -> [Ref] {
         guard let sidData = group.values("objectSid").first, let sid = ADValues.sidString(sidData),
-              let domainSID = session.domainSID, ADValues.domainSID(of: sid) == domainSID,
-              let rid = ADValues.rid(sid), let base = session.server?.defaultNamingContext else { return [] }
+              let domainSID = session.domainSID(for: group.dn), ADValues.domainSID(of: sid) == domainSID,
+              let rid = ADValues.rid(sid), let base = session.domainRoot(for: group.dn) else { return [] }
         let request = LDAPSearchRequest(base: base, scope: .subtree, filter: .equality("primaryGroupID", String(rid)),
                                         attributes: Self.lookupAttributes)
         let pageSize = session.profile.pageSize
@@ -395,7 +402,7 @@ final class MembershipModel {
             let filter = LDAPFilter.and([.equality("objectCategory", Array("group".utf8)),
                                          .extensible(rule: "1.2.840.113556.1.4.1941", attribute: "member",
                                                      value: Array(entry.dn.utf8), dnAttributes: false)])
-            let request = LDAPSearchRequest(base: domainRoot(session), scope: .subtree, filter: filter, attributes: ["1.1"])
+            let request = LDAPSearchRequest(base: domainRoot(session, for: entry.dn), scope: .subtree, filter: filter, attributes: ["1.1"])
             let pageSize = session.profile.pageSize
             do {
                 #if DEBUG
@@ -429,7 +436,7 @@ final class MembershipModel {
             for dn in entry?.strings("member") ?? [] where listed.insert(DN.normalized(dn)).inserted {
                 order.append(dn)
             }
-            let inside = LDAPSearchRequest(base: domainRoot(session), scope: .subtree,
+            let inside = LDAPSearchRequest(base: domainRoot(session, for: current), scope: .subtree,
                                            filter: .and([.equality("objectCategory", Array("group".utf8)),
                                                          .equality("memberOf", Array(current.utf8))]),
                                            attributes: ["1.1"])
@@ -443,8 +450,8 @@ final class MembershipModel {
 
     /// Groups can sit anywhere in the domain, whatever part of it the
     /// connection is set to browse, so nesting is looked up from the root.
-    private func domainRoot(_ session: DirectorySession) -> String {
-        session.server?.defaultNamingContext ?? searchBases(session).first ?? ""
+    private func domainRoot(_ session: DirectorySession, for dn: String) -> String {
+        session.domainRoot(for: dn) ?? searchBases(session).first ?? ""
     }
 
     /// A group nested in a circle is, through it, a member of itself; that is
@@ -489,7 +496,7 @@ final class MembershipModel {
         case .openLDAP?: "entryDN"
         default: nil
         }
-        let roots = session.server?.namingContexts ?? []
+        let roots = session.browsableRoots
         if let attribute {
             let byRoot = await Self.offMain {
                 Dictionary(grouping: wanted.prefix(3000)) { dn in

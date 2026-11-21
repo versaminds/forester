@@ -67,7 +67,7 @@ struct SearchView: View {
                         Button("Selected Entry") { search.base = selected }
                         Divider()
                     }
-                    ForEach(session.server?.namingContexts ?? [], id: \.self) { context in
+                    ForEach(session.browsableRoots, id: \.self) { context in
                         Button(context) { search.base = context }
                     }
                 } label: {

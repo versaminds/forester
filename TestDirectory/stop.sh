@@ -26,3 +26,5 @@ stop() {
 
 stop slapd "$RUN/slapd.pid"
 stop "TLS proxy" "$RUN/proxy.pid"
+stop "child domain's slapd" "$RUN/child-slapd.pid"
+stop "child domain's TLS proxy" "$RUN/child-proxy.pid"

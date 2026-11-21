@@ -11,7 +11,14 @@
 # StartTLS) is terminated by tls_proxy.py in front of it; slapd itself listens
 # on 127.0.0.1:10388. State lives in TestDirectory/.run, rebuilt on every start.
 #
-# Bind as:  CN=admin,DC=corp,DC=example / secret        (rootdn, AD suffix; may write)
+# A second slapd serves child.corp.example, a child domain of the same forest,
+# the way another domain controller would: ldap://127.0.0.1:10489 (StartTLS)
+# and ldaps://127.0.0.1:10637, slapd itself on 10488. The forest's
+# configuration lists it, so the app can browse both domains in one window
+# (in a debug build, FORESTER_TEST_DOMAIN_HOSTS points the name at it).
+#
+# Bind as:  CN=admin,DC=corp,DC=example / secret        (rootdn, AD suffix; may write;
+#                                                        on the child domain too)
 #           cn=admin,dc=example,dc=org / secret         (rootdn, generic suffix; may write)
 # or anonymously (read-only). Apple's slapd sends every other simple bind through
 # its Open Directory Kerberos hook (odusers), so ordinary entries cannot bind.
@@ -24,6 +31,9 @@ SCHEMA=/etc/openldap/schema
 PLAIN_PORT=${LDAP_TEST_PORT:-10389}
 TLS_PORT=${LDAPS_TEST_PORT:-10636}
 SLAPD_PORT=10388
+CHILD_PLAIN_PORT=${LDAP_TEST_CHILD_PORT:-10489}
+CHILD_TLS_PORT=${LDAPS_TEST_CHILD_PORT:-10637}
+CHILD_SLAPD_PORT=10488
 
 # tls_proxy.py upgrades a connection in place with StreamWriter.start_tls, which
 # needs Python 3.11; the python3 macOS ships is 3.9. Use the first new enough one.
@@ -53,7 +63,7 @@ for item in "$RUN"/*(N); do
     *) rm -rf "$item" ;;
   esac
 done
-mkdir -p "$RUN/ad" "$RUN/org"
+mkdir -p "$RUN/ad" "$RUN/org" "$RUN/child" "$RUN/child-admin"
 
 # ── Certificates: a private CA and a server cert for localhost ───────────────
 # The CA is deliberately not trusted by the system, so connecting exercises the
@@ -113,7 +123,41 @@ directory $RUN/org
 index objectClass,uid,cn eq
 EOF
 
-for db in ad org; do
+# ── The child domain's slapd ─────────────────────────────────────────────────
+# Its own server, as another domain's controller is: its root DSE names its
+# own domain. The same administrator signs in, as AD lets an account of the
+# forest's root domain sign in on a child domain's controllers: slapd takes
+# a rootdn only beneath a suffix of its own, so a second, empty database
+# holds just that DN (and shows in the root DSE, which AD's would not).
+cat > "$RUN/child.conf" <<EOF
+include $SCHEMA/core.schema
+include $SCHEMA/cosine.schema
+include $SCHEMA/inetorgperson.schema
+include $SCHEMA/nis.schema
+include $SCHEMA/dyngroup.schema
+include $HERE/adtest.schema
+
+pidfile  $RUN/child-slapd.pid
+argsfile $RUN/child-slapd.args
+sizelimit size.soft=500 size.hard=500 size.pr=200 size.prtotal=unlimited
+# The forest root domain's administrator may change the child domain.
+access to * by dn.exact="CN=admin,DC=corp,DC=example" write by * read
+
+database hdb
+suffix   "DC=child,DC=corp,DC=example"
+rootdn   "CN=admin,DC=child,DC=corp,DC=example"
+rootpw   $ROOTPW
+directory $RUN/child
+index objectClass,cn,sAMAccountName,member eq
+
+database hdb
+suffix   "CN=admin,DC=corp,DC=example"
+rootdn   "CN=admin,DC=corp,DC=example"
+rootpw   $ROOTPW
+directory $RUN/child-admin
+EOF
+
+for db in ad org child child-admin; do
   cat > "$RUN/$db/DB_CONFIG" <<EOF
 set_cachesize 0 33554432 1
 set_lg_regionmax 262144
@@ -127,20 +171,29 @@ done
   || { cat "$RUN/slapadd.log"; exit 1; }
 /usr/sbin/slapadd -q -f "$RUN/slapd.conf" -b "dc=example,dc=org" -l "$RUN/org.ldif" 2>>"$RUN/slapadd.log" \
   || { cat "$RUN/slapadd.log"; exit 1; }
+"$PYTHON" -I "$HERE/generate_ldif.py" child > "$RUN/child.ldif"
+/usr/sbin/slapadd -q -f "$RUN/child.conf" -b "DC=child,DC=corp,DC=example" -l "$RUN/child.ldif" 2>>"$RUN/slapadd.log" \
+  || { cat "$RUN/slapadd.log"; exit 1; }
 
 "$SLAPD" -f "$RUN/slapd.conf" -h "ldap://127.0.0.1:$SLAPD_PORT/" -d "${SLAPD_DEBUG:-0}" >"$RUN/slapd.log" 2>&1 &
 "$PYTHON" -I "$HERE/tls_proxy.py" --backend "127.0.0.1:$SLAPD_PORT" --plain "$PLAIN_PORT" --ldaps "$TLS_PORT" \
   --cert "$RUN/server.crt" --key "$RUN/server.key" >"$RUN/proxy.log" 2>&1 &
 echo $! > "$RUN/proxy.pid"
+"$SLAPD" -f "$RUN/child.conf" -h "ldap://127.0.0.1:$CHILD_SLAPD_PORT/" -d "${SLAPD_DEBUG:-0}" >"$RUN/child-slapd.log" 2>&1 &
+"$PYTHON" -I "$HERE/tls_proxy.py" --backend "127.0.0.1:$CHILD_SLAPD_PORT" --plain "$CHILD_PLAIN_PORT" --ldaps "$CHILD_TLS_PORT" \
+  --cert "$RUN/server.crt" --key "$RUN/server.key" >"$RUN/child-proxy.log" 2>&1 &
+echo $! > "$RUN/child-proxy.pid"
 
 for _ in {1..50}; do
-  if ldapsearch -x -H "ldap://127.0.0.1:$PLAIN_PORT" -b "" -s base namingContexts >/dev/null 2>&1; then
+  if ldapsearch -x -H "ldap://127.0.0.1:$PLAIN_PORT" -b "" -s base namingContexts >/dev/null 2>&1 &&
+     ldapsearch -x -H "ldap://127.0.0.1:$CHILD_PLAIN_PORT" -b "" -s base namingContexts >/dev/null 2>&1; then
     echo "slapd is up: ldap://127.0.0.1:$PLAIN_PORT  ldaps://127.0.0.1:$TLS_PORT"
+    echo "child.corp.example: ldap://127.0.0.1:$CHILD_PLAIN_PORT  ldaps://127.0.0.1:$CHILD_TLS_PORT"
     echo "CA certificate: $RUN/ca.crt"
     exit 0
   fi
   sleep 0.2
 done
-echo "slapd did not come up; log follows" >&2
-cat "$RUN/slapd.log" >&2
+echo "slapd did not come up; logs follow" >&2
+cat "$RUN/slapd.log" "$RUN/child-slapd.log" >&2
 exit 1

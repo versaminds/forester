@@ -26,11 +26,12 @@ enum Automation {
     /// toolbar at many window and column sizes), entrysheets (every entry
     /// sheet opened as a click opens it), sheets (every sheet and form, light
     /// and dark) and ui (real clicks and typing through the app's own
-    /// controls). All five by default. Also: sample (Try a Sample Directory,
+    /// controls), and forest (another domain browsed in the window). All six
+    /// by default. Also: sample (Try a Sample Directory,
     /// over the internet), marketing (the website's pictures), ad (against
     /// Active Directory) and performance (against a big test directory).
     static var parts: Set<String> {
-        let value = ProcessInfo.processInfo.environment["FORESTER_AUTOMATION_ONLY"] ?? "walkthrough,layout,entrysheets,sheets,ui"
+        let value = ProcessInfo.processInfo.environment["FORESTER_AUTOMATION_ONLY"] ?? "walkthrough,layout,entrysheets,sheets,ui,forest"
         return Set(value.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) })
     }
 
@@ -48,6 +49,7 @@ enum Automation {
                 if parts.contains("entrysheets") { try await entrySheets(model, output: output) }
                 if parts.contains("sheets") { try await sheetGallery(model, output: output) }
                 if parts.contains("ui") { try await UITour.run(model, output: output) }
+                if parts.contains("forest") { try await ForestChecks.run(model, output: output) }
                 if parts.contains("sample") { try await sampleDirectory(model, output: output) }
                 if parts.contains("marketing") { try await marketing(model, output: output) }
                 if parts.contains("ad") { try await ADChecks.run(model, output: output) }

@@ -71,7 +71,23 @@ extension DirectorySession {
                 unknown.append(sid)
             }
         }
-        guard let base = server?.defaultNamingContext else { return result }
+        guard let home = server?.defaultNamingContext else { return result }
+        // Each SID is looked for in its own domain: a browsed domain's, by its
+        // domain SID, or this connection's.
+        let searches = Dictionary(grouping: unknown) { sid in
+            browsedDomains.first { $0.isOpen && $0.domainSID != nil && ADValues.domainSID(of: sid) == $0.domainSID }?.domain.dn ?? home
+        }
+        for (base, sids) in searches {
+            await findPrincipals(sids, in: base, into: &result)
+        }
+        for sid in unknown where result[sid] == nil {
+            result[sid] = (ADValues.wellKnownName(sid) ?? sid, nil)
+        }
+        for (sid, value) in result { sidNames[sid] = value }
+        return result
+    }
+
+    private func findPrincipals(_ unknown: [String], in base: String, into result: inout [String: (name: String, dn: String?)]) async {
         for start in stride(from: 0, to: unknown.count, by: 50) {
             let chunk = Array(unknown[start..<min(start + 50, unknown.count)])
             let filters = chunk.compactMap { sid in ADValues.sidData(sid).map { LDAPFilter.equality("objectSid", [UInt8]($0)) } }
@@ -84,11 +100,6 @@ extension DirectorySession {
                 result[sid] = (name, entry.dn)
             }
         }
-        for sid in unknown where result[sid] == nil {
-            result[sid] = (ADValues.wellKnownName(sid) ?? sid, nil)
-        }
-        for (sid, value) in result { sidNames[sid] = value }
-        return result
     }
 
     /// The owner and DACL of `dn`, in words, with what this account may do there.

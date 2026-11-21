@@ -33,7 +33,9 @@ without the user meaning to. For example:
   this Mac trusts, the password in use also goes to the same domain's global
   catalog (ports 3268 and 3269), to its other domain controllers when you ask
   for an account's status on each, and to another domain of the forest you
-  open from it
+  browse in the window or open from it
+- a request about an entry of one domain of a forest sent to another
+  domain's server, when several domains are browsed in one window
 - a Kerberos sign-in whose ticket could be relayed to another connection (the
   TLS channel binding), or, without TLS, a message sent or taken on that
   connection without Kerberos encryption

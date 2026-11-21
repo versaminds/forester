@@ -46,7 +46,7 @@ a month, on a Tuesday, it makes a release (docs/DISTRIBUTION.md, step 5).
 swift test
 ```
 
-This runs 87 unit tests. The 22 tests that need a server are reported as
+This runs 92 unit tests. The 26 tests that need a server are reported as
 *skipped* (step 3), and so are the 9 that need the SASL server (the end of
 step 3), the 7 Kerberos tests and the 5 permission tests, which need the domain
 controller of step 6, and the 4 that time the LDAP client against a big
@@ -91,6 +91,13 @@ directory (step 5, "A big directory"). The unit tests cover:
   a server's challenge may not ask for (step 3 has the details); the framing
   of Kerberos-encrypted messages, which refuses a frame outside the agreed
   sizes before Kerberos sees it.
+- **Domains of a forest**: which connection answers for a DN when two
+  domains are browsed in one window. This domain's entries, its configuration
+  and its DNS zones stay on its own connection; a browsed domain's go to that
+  domain's; a domain listed but not open, one that failed, and a child domain
+  the forest does not list are refused, with the reason; a connection refuses
+  before anything is sent, for reads, searches, changes, additions, deletions
+  and password changes; and moving an entry between domains is refused.
 - **Access rules**: an access control entry in words (full control, read,
   extended rights, property sets, attributes and classes named, where it
   applies, inherited or not, denials), in the order AD applies them.
@@ -137,7 +144,7 @@ CA certificate: …/TestDirectory/.run/ca.crt
 ```
 
 This starts a throwaway OpenLDAP server holding an **Active Directory-shaped**
-domain, `corp.example`, with 1,665 entries:
+domain, `corp.example`, with 1,667 entries:
 
 - users, groups, computers and OUs with binary `objectSid` and `objectGUID`
 - FILETIME timestamps, `userAccountControl` and `groupType`
@@ -152,6 +159,11 @@ domain, `corp.example`, with 1,665 entries:
 - a second, plain LDAP naming context, `example.org` (`inetOrgPerson`,
   `posixGroup` and `groupOfNames`)
 - the server's own `cn=Monitor`
+- a child domain, `child.corp.example` (`DC=child,DC=corp,DC=example`), served
+  by a second `slapd` the way another domain's controller would be, with
+  three people, a team and its own Domain Users; the forest's configuration
+  lists both domains (crossRefs with `systemFlags` 3), and
+  *UG-Forest-Readers* in `CN=Users` of corp.example holds a member from each
 
 Dates are relative to the day you start it, so "expires soon" and "not seen for
 90 days" are always true for the same entries.
@@ -163,6 +175,7 @@ Dates are relative to the day you start it, so "expires soon" and "not seen for
 | Bind DN | `CN=admin,DC=corp,DC=example` |
 | Password | `secret` |
 | Or | anonymous (everything is readable, nothing writable) |
+| The child domain | `localhost`, port **10489** (StartTLS) and **10637** (LDAPS), the same administrator |
 
 Bound as admin you may change anything. Every start rebuilds the directory from
 scratch, so stopping and starting it undoes all your changes.
@@ -192,7 +205,9 @@ variables:
 LDAP_TEST_PORT=11389 LDAPS_TEST_PORT=11636 TestDirectory/start.sh
 ```
 
-Port 10388 is also used, internally (see the note at the end).
+Ports 10388 and 10488 are also used, internally (see the note at the end).
+The child domain's ports are set with `LDAP_TEST_CHILD_PORT` and
+`LDAPS_TEST_CHILD_PORT`.
 
 ## 3. Integration tests
 
@@ -202,9 +217,9 @@ With the test directory running:
 FORESTER_TEST_SERVER=1 swift test
 ```
 
-109 tests run, in about 6 seconds (the SASL tests wait for their own server,
+118 tests run, in about 6 seconds (the SASL tests wait for their own server,
 the Kerberos and permission tests for step 6, and the timing tests for a big
-directory). The 22 against the server are in two suites.
+directory). The 26 against the server are in three suites.
 
 **IntegrationTests** (13) checks reading:
 
@@ -243,6 +258,20 @@ directory). The 22 against the server are in two suites.
   encrypt
 
 The write tests work in their own OU, and put back anything else they change.
+
+**ForestIntegrationTests** (4) checks two domains of one forest over two
+connections, the parent's routed as the app routes it:
+
+- the forest's configuration lists both domains, as the app reads them
+- asked of the parent's connection, the child domain's entries are read,
+  searched (paged), changed, added, renamed and deleted on the child's server,
+  each read back from that server, while not one byte about them crosses the
+  parent's connection
+- a corp.example group's members from both domains are read together, each
+  from its own server; and from the child's side, the parent's entries go to
+  the parent
+- with the child domain not open, its entries are refused and the parent's
+  server never hears of them, while the parent's own entries are read as before
 
 To run one suite:
 
@@ -531,7 +560,7 @@ show what a person sees, such as the App Store screenshots, add
 `FORESTER_SCREEN_CAPTURE=1`; it needs the Screen Recording permission of the
 terminal it is started from.
 
-It runs five parts, about ten minutes in all, then quits, with exit status 1
+It runs six parts, about ten minutes in all, then quits, with exit status 1
 if anything failed (the log says what, and `FAILED.png` shows the window). Look at the
 pictures with:
 
@@ -635,6 +664,21 @@ focused window. It asks macOS to bring it forward, so do not type into other
 apps while it runs. If macOS keeps another app in front, it does the menu
 commands it could not reach directly, and says so at the end
 (`note: the app was in the background…`).
+
+**Another domain in the window** (16 checks printed as `verified (forest): …`).
+The test forest has no DNS of its own, so the debug build is told where
+child.corp.example answers (`FORESTER_TEST_DOMAIN_HOSTS`, which the script
+sets and a release build never reads). The forest lists both domains; an
+entry of the child domain is offered, not read, until the domain is browsed;
+browsed, it is one more root of the tree, listing its own containers and
+protected from rename and delete; its entry is read and shown, with its
+primary group found in its own domain and its permissions read there; read-only
+holds for it; a change goes to the child's server and Change History undoes it
+there; a search beneath its root finds its three people, and an export of its
+subtree reads all eight entries; a corp.example group shows its member from
+the child domain; stopped, its root and connection go and its entries are no
+longer read; and a domain whose controllers do not answer shows why on its
+own root while the rest of the window carries on.
 
 **Inside the App Store sandbox.** The Mac App Store variant runs sandboxed,
 and what the sandbox refuses (a connection, the keychain, a file) shows only
@@ -875,4 +919,4 @@ These parts only run against real AD, so they are the ones worth checking:
 A note on the test server's internals: Apple's `slapd` only accepts a TLS
 certificate from a keychain. Rather than install one in yours,
 `TestDirectory/tls_proxy.py` handles TLS in front of it, for both LDAPS and the
-StartTLS upgrade. `slapd` itself listens on port 10388.
+StartTLS upgrade. `slapd` itself listens on port 10388, and the child domain's on 10488.

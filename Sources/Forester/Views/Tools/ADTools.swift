@@ -230,9 +230,17 @@ struct DomainInfoView: View {
                             Text(domain.netbiosName ?? "").foregroundStyle(.secondary)
                             if session.holdsEntry(domain.dn) {
                                 Text("This connection").foregroundStyle(.secondary)
-                            } else if let appModel {
-                                Button("Open") { Task { await appModel.openDomain(domain.dnsName, from: session) } }
-                                    .help("Browse \(domain.dnsName) with this connection's settings and user")
+                            } else {
+                                if session.browsedDomains.contains(where: { DN.isSame($0.domain.dn, domain.dn) }) {
+                                    Text("Browsed in the window").foregroundStyle(.secondary)
+                                } else {
+                                    Button("Browse in the Window") { Task { await session.browse(domain) } }
+                                        .help("Add \(domain.dnsName) to the window's tree, signed in as this connection is")
+                                }
+                                if let appModel {
+                                    Button("Open") { Task { await appModel.openDomain(domain.dnsName, from: session) } }
+                                        .help("Open \(domain.dnsName) as a connection of its own, with this connection's settings and user")
+                                }
                             }
                         }
                     }
@@ -442,6 +450,14 @@ struct AccountStatusSheet: View {
     static let attributes = ["lockoutTime", "badPwdCount", "badPasswordTime", "lastLogon", "pwdLastSet", "msDS-User-Account-Control-Computed"]
 
     private func load() async {
+        // The domain controllers asked are this connection's domain's: an
+        // account of another domain browsed here is not sent to them.
+        guard session.holdsEntry(entry.dn) else {
+            rows = [Row(server: session.profile.host,
+                        state: "\(DN.displayName(entry.dn)) is in another domain of the forest; open that domain in a connection of its own to see its status on each of its domain controllers.",
+                        failed: true, skipped: true)]
+            return
+        }
         let base = session.server?.defaultNamingContext ?? ""
         let request = LDAPSearchRequest(base: base, scope: .subtree,
                                         filter: (try? LDAPFilter.parse("(&(objectClass=computer)(userAccountControl:1.2.840.113556.1.4.803:=8192))")) ?? .present("objectClass"),
