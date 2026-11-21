@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: LicenseRef-PolyForm-Shield-1.0.0
 // Copyright © 2026 VersaMinds
 
+import LDAPKit
 import SwiftUI
 
 // Shared building blocks for forms and sheets, so every form in the app has
@@ -209,9 +210,9 @@ struct SheetLayout<Content: View, Status: View, Buttons: View>: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             VStack(alignment: .leading, spacing: 3) {
-                Text(title).font(.headline).lineLimit(2)
+                Text(VisibleText.reveal(title)).font(.headline).lineLimit(2)
                 if let subtitle {
-                    Text(subtitle).font(.callout).foregroundStyle(.secondary).lineLimit(2).truncationMode(.middle)
+                    Text(VisibleText.reveal(subtitle)).font(.callout).foregroundStyle(.secondary).lineLimit(2).truncationMode(.middle)
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)

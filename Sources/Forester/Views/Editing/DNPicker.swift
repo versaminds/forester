@@ -83,7 +83,7 @@ struct DNPickerSheet: View {
             }
         } status: {
             if !selection.isEmpty, typedDN.isEmpty {
-                Text(selection.count == 1 ? DN.canonicalName(selection.first!) : "\(selection.count) chosen")
+                Text(selection.count == 1 ? VisibleText.reveal(DN.canonicalName(selection.first!)) : "\(selection.count) chosen")
                     .foregroundStyle(.secondary).lineLimit(1).truncationMode(.middle)
             }
         } buttons: {
@@ -121,11 +121,11 @@ struct DNPickerSheet: View {
             HStack(spacing: 8) {
                 EntryIcon(kind: row.kind, disabled: row.disabled)
                 VStack(alignment: .leading, spacing: 1) {
-                    Text(row.name)
-                    Text(row.location).font(.caption).foregroundStyle(.secondary)
+                    Text(VisibleText.reveal(row.name))
+                    Text(VisibleText.reveal(row.location)).font(.caption).foregroundStyle(.secondary)
                 }
                 Spacer()
-                Text(row.account).font(.caption).foregroundStyle(.secondary)
+                Text(VisibleText.reveal(row.account)).font(.caption).foregroundStyle(.secondary)
             }
             .tag(row.id)
             .help(row.id)
@@ -333,7 +333,7 @@ private struct PickerTreeRow: View {
     private var label: some View {
         HStack(spacing: 6) {
             EntryIcon(kind: node.kind, disabled: node.disabled)
-            Text(node.name).lineLimit(1)
+            Text(VisibleText.reveal(node.name)).lineLimit(1)
         }
         .help(node.id)
     }

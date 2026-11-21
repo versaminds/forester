@@ -73,7 +73,7 @@ Requires macOS 14 or later. If Forester saves you time, you can
 - **User**: `user@corp.example`, `CORP\user` or a full DN.
 - **Certificates**: if your organisation's root CA is in Keychain Access, it just
   works. Otherwise the app shows the certificate chain and its SHA-256
-  fingerprint: **Trust Once** for this session, or **Always Trust** to pin it to
+  fingerprint: **Trust Once** until you disconnect, or **Always Trust** to pin it to
   the connection (forget it again in the connection's settings).
 - Bind failures are explained in words: AD's `data 52e`, `775`, `532` and the
   like become "wrong password", "locked out", "password expired".

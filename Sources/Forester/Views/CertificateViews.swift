@@ -47,25 +47,36 @@ struct CertificateTrustSheet: View {
                 }
             }
             .font(.callout)
-            Text("Directory servers often use a certificate from the organisation's own CA. Compare the fingerprint with what your administrator expects before trusting it. Trusting pins this certificate to this connection only (Trust Once forgets it when you quit); installing the organisation's root CA in Keychain Access trusts all of its servers.")
+            Text(Self.explanation)
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
             HStack {
                 Button("Show Certificate…") { CertificateViewer.show(failure.chain) }
                 Spacer()
+                // Return and Escape both decline: trusting takes a click, so
+                // a key pressed out of habit never accepts a certificate.
                 Button("Cancel", role: .cancel) { dismiss(); cancel() }
-                    .keyboardShortcut(.cancelAction)
+                    .keyboardShortcut(.defaultAction)
                 if let trustOnce {
                     Button("Trust Once") { dismiss(); trustOnce() }
-                        .help("Connect this time without remembering the certificate.")
+                        .help("Connect without remembering the certificate: it is forgotten when you disconnect.")
                 }
                 Button("Always Trust") { dismiss(); trust() }
-                    .keyboardShortcut(.defaultAction)
                     .help("Pin this certificate to the connection; it can be forgotten in the connection's settings.")
             }
         }
         .padding(20)
         .frame(width: 520)
+        .background {
+            Button("Cancel") { dismiss(); cancel() }
+                .keyboardShortcut(.cancelAction)
+                .opacity(0)
+                .accessibilityHidden(true)
+        }
     }
+
+    /// Trust Once lasts until the connection is closed: disconnecting,
+    /// changing its server, or quitting.
+    static let explanation = "Directory servers often use a certificate from the organisation's own CA. Compare the fingerprint with what your administrator expects before trusting it. Trusting pins this certificate to this connection only (Trust Once forgets it when you disconnect); installing the organisation's root CA in Keychain Access trusts all of its servers."
 }

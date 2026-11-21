@@ -24,7 +24,8 @@ let package = Package(
     ],
     targets: [
         // The LDAP client: BER, filters, messages, TLS transport and the connection.
-        // No dependencies beyond Apple's Foundation, Security, CryptoKit, CommonCrypto (SCRAM's PBKDF2) and GSS (Kerberos).
+        // No dependencies beyond Apple's Foundation, Security, CryptoKit, CommonCrypto (SCRAM's PBKDF2), GSS (Kerberos)
+        // and ImageIO (directory photos, decoded only as JPEG, PNG or GIF of a photo's size).
         .target(
             name: "LDAPKit",
             swiftSettings: [.swiftLanguageMode(.v5)],

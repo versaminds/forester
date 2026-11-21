@@ -275,7 +275,7 @@ struct EntryHeader: View {
     @ViewBuilder
     private var photo: some View {
         if let data = entry.values("thumbnailPhoto").first ?? entry.values("jpegPhoto").first,
-           let image = NSImage(data: data) {
+           let image = DirectoryImages.image(data, points: 56) {
             Image(nsImage: image)
                 .resizable()
                 .aspectRatio(contentMode: .fill)

@@ -24,6 +24,25 @@ private func connect(_ security: LDAPConnection.Security = .none, port: Int? = n
 
 @Suite(.enabled(if: serverEnabled), .serialized)
 struct IntegrationTests {
+    /// A request's answer is counted as it arrives: past the limit it fails,
+    /// whether a read, a search without paging or one page, and the
+    /// connection goes on. Pages small enough each come through.
+    @Test func aRequestPastItsByteLimitFails() async throws {
+        let connection = LDAPConnection(.init(host: "localhost", port: plainPort, security: .none, timeout: 10,
+                                              maxBytesPerRequest: 64 * 1024))
+        try await connection.open()
+        let request = LDAPSearchRequest(base: "OU=Bulk Import,OU=Corp,\(adBase)", scope: .oneLevel,
+                                        filter: .equality("objectClass", "user"), attributes: ["*"])
+        do {
+            let result = try await connection.search(request)
+            Issue.record("\(result.entries.count) entries came back past the limit")
+        } catch let error as LDAPError {
+            #expect(error.localizedDescription.contains("for one request"), "\(error.localizedDescription)")
+        }
+        #expect(try await connection.pagedSearch(request, pageSize: 20).entries.count == 1_500)
+        await connection.close()
+    }
+
     @Test func rootDSEListsNamingContexts() async throws {
         let connection = try await connect()
         let root = try await connection.rootDSE()
