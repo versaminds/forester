@@ -22,10 +22,15 @@ struct BrowsedDomain: Identifiable {
 }
 
 extension DirectorySession {
-    /// The browsed domain whose tree `dn` is in.
+    /// The browsed domain that holds `dn`, decided as requests are routed
+    /// (`ForestRoutes.domain(holding:)`), so the two never disagree: nil when
+    /// this connection's server holds it, also when a browsed domain is an
+    /// ancestor whose root contains this domain's entries too.
     func browsedDomain(containing dn: String) -> BrowsedDomain? {
-        browsedDomains.filter { DN.isWithin(dn, $0.domain.dn) }
-            .max { DN.components($0.domain.dn).count < DN.components($1.domain.dn).count }
+        let routes = ForestRoutes(held: server?.namingContexts ?? [],
+                                  domains: browsedDomains.map { ForestRoutes.Domain(root: $0.domain.dn, dnsName: $0.domain.dnsName) })
+        guard let holder = routes.domain(holding: dn) else { return nil }
+        return browsedDomains.first { DN.isSame($0.domain.dn, holder.root) }
     }
 
     /// The root of the domain `dn` is in: a browsed domain's, or this
@@ -93,6 +98,9 @@ extension DirectorySession {
         var sid: String?
         do {
             let connection = try await openConnection(to: host, port: port, timeout: TimeInterval(profile.timeoutSeconds))
+            #if DEBUG
+            browsedConnectionsOpened += 1
+            #endif
             held = ServerInfo(rootDSE: try await connection.rootDSE()).namingContexts
             sid = (try? await connection.read(domain.dn, attributes: ["objectSid"]))??.values("objectSid").first.flatMap(ADValues.sidString)
             opened = connection
@@ -104,35 +112,56 @@ extension DirectorySession {
             if let opened { await opened.close() }
             return
         }
+        // The connection it replaces is closed, so none is left signed in.
+        let replaced = browsedDomains[index].connection
         browsedDomains[index].connection = opened
         browsedDomains[index].failure = failure
         browsedDomains[index].held = held
         if let sid { browsedDomains[index].domainSID = sid }
         tree.setError(DN.normalized(domain.dn), failure.map { "\(domain.dnsName) could not be opened: \($0)" })
         await installRoutes()
+        if let replaced, replaced !== opened { await replaced.close() }
     }
 
     /// Takes a browsed domain out of the tree and closes its connection.
     func stopBrowsing(_ rootDN: String) async {
         guard let index = browsedDomains.firstIndex(where: { DN.isSame($0.domain.dn, rootDN) }) else { return }
+        // What the domain holds, decided before it goes: an ancestor domain's
+        // root contains this connection's own entries too, which stay.
+        let id = browsedDomains[index].id
+        func itsOwn(_ dn: String) -> Bool { browsedDomain(containing: dn)?.id == id }
+        let selectionGoes = selectedDN.map(itsOwn) ?? false
+        let baseGoes = !search.base.isEmpty && itsOwn(search.base)
         let removed = browsedDomains.remove(at: index)
         await installRoutes()
-        if let selectedDN, DN.isWithin(selectedDN, removed.domain.dn) { select(nil) }
-        if search.base.isEmpty == false, DN.isWithin(search.base, removed.domain.dn) {
-            search.base = server?.defaultNamingContext ?? ""
-        }
+        if selectionGoes { select(nil) }
+        if baseGoes { search.base = server?.defaultNamingContext ?? "" }
         tree.removeRoot(DN.normalized(removed.domain.dn))
         await removed.connection?.close()
     }
 
     /// Opens again the browsed domains whose connection was lost (a domain
     /// controller closes one left idle).
+    /// Requests that find it lost at once wait for one new connection, so no
+    /// second one is signed in and left open.
     func reopenLostDomains() async {
         let started = connectionGeneration
         for browsed in browsedDomains {
+            if let underway = reopening[browsed.id] {
+                await underway.value
+                continue
+            }
             guard let connection = browsed.connection, !(await connection.isAlive) else { continue }
-            await open(browsed.domain, generation: started)
-            await connection.close()
+            // Another request may have started it while this one asked.
+            if let underway = reopening[browsed.id] {
+                await underway.value
+                continue
+            }
+            let domain = browsed.domain, id = browsed.id
+            let task = Task { await self.open(domain, generation: started) }
+            reopening[id] = task
+            await task.value
+            reopening[id] = nil
         }
     }
 

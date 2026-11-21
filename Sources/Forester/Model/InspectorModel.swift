@@ -565,7 +565,7 @@ final class MembershipModel {
         case .computer, .domainController:
             detail = entry.string("dNSHostName") ?? entry.string("sAMAccountName") ?? ""
         case .foreignSecurityPrincipal:
-            detail = ADValues.wellKnownName(DN.rdnValue(entry.dn)) ?? ""
+            detail = ADValues.foreignPrincipalName(DN.rdnValue(entry.dn)) ?? ""
         default:
             detail = entry.string("sAMAccountName") ?? entry.string("uid") ?? entry.string("mail") ?? ""
         }

@@ -133,6 +133,12 @@ attributetype ( 1.3.6.1.4.1.99999.2.6 NAME 'nETBIOSName'
 attributetype ( 1.3.6.1.4.1.99999.2.7 NAME 'dnsRoot'
 	EQUALITY caseIgnoreMatch SUBSTR caseIgnoreSubstringsMatch SYNTAX 1.3.6.1.4.1.1466.115.121.1.15 )
 
+attributetype ( 1.3.6.1.4.1.99999.2.40 NAME 'configurationNamingContext'
+	EQUALITY distinguishedNameMatch SYNTAX 1.3.6.1.4.1.1466.115.121.1.12 SINGLE-VALUE )
+
+attributetype ( 1.3.6.1.4.1.99999.2.41 NAME 'defaultNamingContext'
+	EQUALITY distinguishedNameMatch SYNTAX 1.3.6.1.4.1.1466.115.121.1.12 SINGLE-VALUE )
+
 attributetype ( 1.2.840.113556.1.4.375 NAME 'systemFlags'
 	EQUALITY integerMatch ORDERING integerOrderingMatch SYNTAX 1.3.6.1.4.1.1466.115.121.1.27 SINGLE-VALUE )
 

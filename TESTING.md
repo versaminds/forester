@@ -46,7 +46,7 @@ a month, on a Tuesday, it makes a release (docs/DISTRIBUTION.md, step 5).
 swift test
 ```
 
-This runs 117 unit tests. The 27 tests that need a server are reported as
+This runs 122 unit tests. The 28 tests that need a server are reported as
 *skipped* (step 3), and so are the 10 that need the SASL server (the end of
 step 3), the 8 Kerberos tests and the 5 permission tests, which need the domain
 controller of step 6, the 4 that time the LDAP client against a big
@@ -99,8 +99,12 @@ old TLS version (the end of step 3). The unit tests cover:
   outside the expected container, with its DN and changes, and warns about
   administrators' groups' members, permissions, account flags, service
   principal names, delegation and passwords, without showing a password;
-  the import log keeps a line break in a DN on its record's line, and a new
-  log is numbered beside an earlier one.
+  an entry named by `<SID=…>` or `<GUID=…>` is always warned about (it could
+  be an administrators' group), and so are `altSecurityIdentities`,
+  `msDS-GroupMSAMembership`, `gPLink` and `primaryGroupID`, on an added entry
+  too; a foreign security principal's well-known group reads as another
+  domain's, with its SID; the import log keeps a line break in a DN on its
+  record's line, and a new log is numbered beside an earlier one.
 - **Display hardening**: a photo is decoded only as a JPEG, PNG or GIF by
   its first bytes and to the decoder alike, at the size shown; a BMP, TIFF
   or HEIC, a TIFF behind a JPEG's first bytes, a value past 10 MB and an
@@ -124,6 +128,13 @@ old TLS version (the end of step 3). The unit tests cover:
   the forest does not list are refused, with the reason; a connection refuses
   before anything is sent, for reads, searches, changes, additions, deletions
   and password changes; and moving an entry between domains is refused.
+  Connected to a child domain and browsing its parent, whose root contains
+  every DN of the child's, the child's entries and configuration stay its
+  own. `<GUID=…>` and `<SID=…>` are refused while another domain is about,
+  and dc written as `domainComponent` or its OID counts as dc. A tree node
+  belongs to the deepest root above it, so taking out an outer root leaves an
+  inner one. A crossRef whose DNS name is not the one its naming context
+  spells is no domain.
 - **Access rules**: an access control entry in words (full control, read,
   extended rights, property sets, attributes and classes named, where it
   applies, inherited or not, denials), in the order AD applies them.
@@ -160,12 +171,15 @@ its new one last; a connection written by a newer Forester that this one
 cannot read survives a save; a connection changed back to a simple bind
 moves to where 1.1.1 reads it.
 
-Twelve more check what the file may not decide. Pinned certificates,
+Twenty more check what the file may not decide, and more. Pinned certificates,
 accepting any certificate, allowing changes and the client certificate are
 this Mac's (`connection-settings.json`, beside the local connections file,
-never in iCloud Drive): upgrading keeps them from the file once; a file
-written later changes none of them, and a connection that arrives in it
-starts read-only, trusting the system's certificates only. A client
+never in iCloud Drive): upgrading keeps them from the file once, and never
+again, also when the settings file is later removed, or cannot be read (it
+is then kept aside and every connection starts read-only, trusting the
+system's certificates only); a file written later changes none of them, and
+a connection that arrives in it starts read-only, trusting the system's
+certificates only. A client
 certificate is shown only to the server, port, security and certificate
 checking it was chosen for in the editor. An import never replaces a
 connection here. The global catalog and other servers get the system's
@@ -174,7 +188,9 @@ any". Another domain reuses a saved connection only with the same kind of
 sign-in, user and certificate. The password prompt warns of clear text and of
 any certificate accepted. And "User cannot change password" changes only its
 own rules: undone, they come back where they were, with a rule added
-meanwhile kept, and with nothing added the very bytes return.
+meanwhile kept, and with nothing added the very bytes return; where denials
+were added before a rule's old place it goes where the order Windows applies
+allows, and on a list someone put out of that order the undo is refused.
 
 With `FORESTER_TEST_AD=1` and the domain controller of step 6 running, three
 more do the last against it: turned on, AD refuses the user's own password
@@ -193,7 +209,7 @@ CA certificate: …/TestDirectory/.run/ca.crt
 ```
 
 This starts a throwaway OpenLDAP server holding an **Active Directory-shaped**
-domain, `corp.example`, with 1,667 entries:
+domain, `corp.example`, with 1,668 entries:
 
 - users, groups, computers and OUs with binary `objectSid` and `objectGUID`
 - FILETIME timestamps, `userAccountControl` and `groupType`
@@ -212,7 +228,11 @@ domain, `corp.example`, with 1,667 entries:
   by a second `slapd` the way another domain's controller would be, with
   three people, a team and its own Domain Users; the forest's configuration
   lists both domains (crossRefs with `systemFlags` 3), and
-  *UG-Forest-Readers* in `CN=Users` of corp.example holds a member from each
+  *UG-Forest-Readers* in `CN=Users` of corp.example holds a member from each.
+  As every domain controller of a forest does, the child's server holds a copy
+  of the configuration, which its root DSE names. The configuration also
+  holds a crossRef whose DNS name, attacker.example, is not the one its naming
+  context spells: what a hostile writer would add to send a sign-in elsewhere
 
 Dates are relative to the day you start it, so "expires soon" and "not seen for
 90 days" are always true for the same entries.
@@ -266,9 +286,10 @@ With the test directory running:
 FORESTER_TEST_SERVER=1 swift test
 ```
 
-144 tests run, in about 7 seconds (the SASL tests wait for their own server,
-the Kerberos and permission tests for step 6, and the timing tests for a big
-directory). The 27 against the server are in three suites.
+150 tests run, in about 7 seconds (the SASL tests wait for their own server,
+the Kerberos and permission tests for step 6, the timing tests for a big
+directory, and the TLS version test for its servers). The 28 against the
+server are in three suites.
 
 **IntegrationTests** (14) checks reading:
 
@@ -310,10 +331,14 @@ directory). The 27 against the server are in three suites.
 
 The write tests work in their own OU, and put back anything else they change.
 
-**ForestIntegrationTests** (4) checks two domains of one forest over two
+**ForestIntegrationTests** (5) checks two domains of one forest over two
 connections, the parent's routed as the app routes it:
 
-- the forest's configuration lists both domains, as the app reads them
+- the forest's configuration, read from either domain's server, lists both
+  domains as the app takes them, and not the crossRef pointing elsewhere
+- connected to the child domain and browsing the parent, the child's own
+  entries and the configuration are read from the child's server without a
+  byte to the parent's, and the parent's entries from the parent's
 - asked of the parent's connection, the child domain's entries are read,
   searched (paged), changed, added, renamed and deleted on the child's server,
   each read back from that server, while not one byte about them crosses the
@@ -738,7 +763,7 @@ apps while it runs. If macOS keeps another app in front, it does the menu
 commands it could not reach directly, and says so at the end
 (`note: the app was in the background…`).
 
-**Another domain in the window** (16 checks printed as `verified (forest): …`).
+**Another domain in the window** (22 checks printed as `verified (forest): …`).
 The test forest has no DNS of its own, so the debug build is told where
 child.corp.example answers (`FORESTER_TEST_DOMAIN_HOSTS`, which the script
 sets and a release build never reads). The forest lists both domains; an
@@ -750,8 +775,14 @@ holds for it; a change goes to the child's server and Change History undoes it
 there; a search beneath its root finds its three people, and an export of its
 subtree reads all eight entries; a corp.example group shows its member from
 the child domain; stopped, its root and connection go and its entries are no
-longer read; and a domain whose controllers do not answer shows why on its
-own root while the rest of the window carries on.
+longer read; a domain whose controllers do not answer shows why on its
+own root while the rest of the window carries on; and requests that all find
+its connection lost at once wait for one new connection, none more opened.
+Then, connected to the child domain, it browses the parent: offered (and not
+the crossRef pointing elsewhere), one more root, the child's own entries and
+the configuration still the child's while the parent's go to the parent, a
+child account's primary group from its own domain, and taking the parent out
+leaves the child's tree and the entry shown.
 
 **Inside the App Store sandbox.** The Mac App Store variant runs sandboxed,
 and what the sandbox refuses (a connection, the keychain, a file) shows only

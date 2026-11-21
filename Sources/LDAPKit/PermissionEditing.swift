@@ -138,6 +138,11 @@ extension SecurityDescriptor {
     /// Explicit denials before explicit allowances before inherited rules,
     /// the order Windows evaluates and writes them in. A list in another
     /// order is not changed: where a rule belongs is then a guess.
+    /// Explicit denials, then explicit allowances, then inherited rules.
+    public static func isCanonical(_ aces: [ACE]) -> Bool {
+        (try? checkCanonical(aces)) != nil
+    }
+
     static func checkCanonical(_ aces: [ACE]) throws {
         var stage = 0
         for ace in aces {

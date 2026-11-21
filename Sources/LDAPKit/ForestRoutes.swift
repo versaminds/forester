@@ -50,12 +50,31 @@ public struct ForestRoutes: Sendable {
         self.domains = domains
     }
 
+    /// The other domain that holds `dn`: the deepest domain root containing
+    /// it, when that is deeper than every naming context this server holds
+    /// that contains it. nil when this server holds it (also when this is a
+    /// child domain and the other an ancestor, whose root contains this
+    /// domain's entries too).
+    public func domain(holding dn: String) -> Domain? {
+        guard !dn.isEmpty, !DN.isExtended(dn) else { return nil }
+        let heldDepth = Self.deepest(held.filter { DN.isWithin(dn, $0) })?.depth ?? 0
+        guard let domain = domains.filter({ DN.isWithin(dn, $0.root) })
+            .max(by: { DN.components($0.root).count < DN.components($1.root).count }),
+              DN.components(domain.root).count > heldDepth else { return nil }
+        return domain
+    }
+
     public func route(_ dn: String) -> Route {
         guard !dn.isEmpty else { return .here }
+        // <GUID=…> and <SID=…> name an entry without saying where it is: with
+        // other domains of the forest about, which one holds it is unknown,
+        // and the parent's server could be asked for a child's entry.
+        if DN.isExtended(dn) {
+            return domains.isEmpty ? .here
+                : .refused("\(dn.trimmingCharacters(in: .whitespaces).prefix(60)) names an entry by GUID or SID; with other domains of the forest about, Forester cannot tell which domain holds it, so it is not asked for. Use its DN.")
+        }
         let heldDepth = Self.deepest(held.filter { DN.isWithin(dn, $0) })
-        let domain = domains.filter { DN.isWithin(dn, $0.root) }
-            .max { DN.components($0.root).count < DN.components($1.root).count }
-        if let domain, DN.components(domain.root).count > heldDepth?.depth ?? 0 {
+        if let domain = domain(holding: dn) {
             if let connection = domain.connection { return .connection(connection) }
             if let failure = domain.failure {
                 return .refused("\(DN.displayName(dn)) is in \(domain.dnsName), which could not be opened: \(failure)")
@@ -66,13 +85,27 @@ public struct ForestRoutes: Sendable {
         // A child domain's names end in its parent's (DC=child,DC=corp is
         // beneath DC=corp), so lying beneath a naming context is not enough:
         // a DC= part right beneath it starts a domain of its own.
-        let parts = DN.components(dn)
+        // Normalized, so dc written as domainComponent or its OID counts too.
+        let parts = DN.components(DN.normalized(dn))
         let below = parts.count - depth
-        if below > 0, DN.rdnAttribute(parts[below - 1])?.lowercased() == "dc" {
+        if below > 0, DN.rdnAttribute(parts[below - 1]) == "dc" {
             let name = DN.dnsDomain(parts[(below - 1)...].joined(separator: ",")) ?? DN.displayName(dn)
             return .refused("\(DN.displayName(dn)) is in \(name), another domain than \(DN.dnsDomain(context) ?? context), which this window does not have open.")
         }
         return .here
+    }
+
+    /// A crossRef whose DNS name is the one its naming context spells
+    /// (DC=child,DC=corp,DC=example is child.corp.example). Anything else is
+    /// not taken for a domain of the forest: its dnsRoot is where Forester
+    /// would connect, and a crossRef written to point elsewhere would send
+    /// the sign-in to another host.
+    public static func isConsistent(nCName: String, dnsRoot: String) -> Bool {
+        // A domain's naming context is DC= parts only.
+        let parts = DN.components(DN.normalized(nCName))
+        guard !parts.isEmpty, parts.allSatisfy({ DN.rdnAttribute($0) == "dc" }),
+              let spelled = DN.dnsDomain(nCName) else { return false }
+        return spelled.caseInsensitiveCompare(dnsRoot.trimmingCharacters(in: .whitespaces)) == .orderedSame
     }
 
     /// This server holds `dn`.

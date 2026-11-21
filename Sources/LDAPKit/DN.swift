@@ -146,10 +146,30 @@ public enum DN {
     public static func normalized(_ dn: String) -> String {
         components(dn).map { rdn -> String in
             guard let eq = rdn.firstIndex(of: "=") else { return rdn.lowercased() }
-            let type = rdn[..<eq].trimmingCharacters(in: .whitespaces).lowercased()
+            let type = attributeType(rdn[..<eq].trimmingCharacters(in: .whitespaces))
             let value = unescape(trimUnescaped(String(rdn[rdn.index(after: eq)...]))).lowercased()
             return "\(type)=\(escape(value))"
         }.joined(separator: ",")
+    }
+
+    /// The attribute type as compared: lowercased, and dc under its other
+    /// names (its long name and its OID), which name domains as dc does.
+    static func attributeType(_ type: String) -> String {
+        var lower = type.lowercased()
+        if lower.hasPrefix("oid.") { lower.removeFirst(4) }
+        return ["domaincomponent", "0.9.2342.19200300.100.1.25"].contains(lower) ? "dc" : lower
+    }
+
+    /// An extended DN (`<GUID=…>`, `<SID=…>`, `<WKGUID=…>`), which AD takes
+    /// for an entry named by its identity rather than its place.
+    public static func isExtended(_ dn: String) -> Bool {
+        dn.trimmingCharacters(in: .whitespaces).hasPrefix("<")
+    }
+
+    /// The deepest of `roots` that `dn` lies within: in a tree of several
+    /// roots, one of which may lie beneath another, the root `dn` belongs to.
+    public static func deepestRoot(of dn: String, in roots: [String]) -> String? {
+        roots.filter { isWithin(dn, $0) }.max { components($0).count < components($1).count }
     }
 
     public static func isSame(_ a: String, _ b: String) -> Bool {
@@ -177,7 +197,7 @@ public enum DN {
     /// `corp.example` from `DC=corp,DC=example`.
     public static func dnsDomain(_ dn: String) -> String? {
         let dcs = components(dn).compactMap { rdn -> String? in
-            guard rdnAttribute(rdn)?.lowercased() == "dc" else { return nil }
+            guard attributeType(rdnAttribute(rdn) ?? "") == "dc" else { return nil }
             return rdnValue(rdn)
         }
         return dcs.isEmpty ? nil : dcs.joined(separator: ".")

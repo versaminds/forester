@@ -304,7 +304,7 @@ struct EntryHeader: View {
     private var title: String {
         if entry.dn.isEmpty { return session.server?.dnsHostName ?? session.profile.host }
         if kind == .groupPolicy, let name = entry.string("displayName") { return name }
-        if kind == .foreignSecurityPrincipal, let name = ADValues.wellKnownName(DN.rdnValue(entry.dn)) { return name }
+        if kind == .foreignSecurityPrincipal, let name = ADValues.foreignPrincipalName(DN.rdnValue(entry.dn)) { return name }
         // An entry named by uid (uid=alovelace) usually has its person's name in cn.
         return entry.string("displayName") ?? entry.string("cn") ?? DN.displayName(entry.dn)
     }

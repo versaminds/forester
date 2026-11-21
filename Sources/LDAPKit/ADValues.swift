@@ -97,6 +97,17 @@ public enum ADValues {
         return wellKnownName(sid)
     }
 
+    /// A name for the SID of a foreign security principal: an account of a
+    /// trusted domain or forest, never this one's. A well-known SID such as
+    /// Authenticated Users reads as itself; a domain group's RID reads as
+    /// that group of the other domain, with the SID, since "Domain Admins"
+    /// alone would read as this domain's.
+    public static func foreignPrincipalName(_ sid: String) -> String? {
+        if let name = wellKnownSIDs[sid] { return name }
+        guard let name = wellKnownName(sid), let domain = domainSID(of: sid) else { return nil }
+        return "\(name) of another domain (\(domain))"
+    }
+
     /// The SID written the one way it reads back from its bytes (`S-1-5-21-…`,
     /// no leading zeros or lowercase), or nil when it is not a SID.
     public static func canonicalSID(_ text: String) -> String? {

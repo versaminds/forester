@@ -131,6 +131,67 @@ import Testing
         #expect(LDIFImportReview(records, container: nil, privilegedGroups: privileged).items.count == 7)
     }
 
+    /// An entry named by GUID or SID is always warned about (it could be an
+    /// administrators' group), and so are the further attributes that hand
+    /// out power, on an added entry too.
+    @Test func entriesByGUIDOrSIDAndFurtherSensitiveAttributesAreWarned() throws {
+        let file = """
+        dn: <SID=S-1-5-21-1-2-3-512>
+        changetype: modify
+        add: member
+        member: CN=New User,OU=Sales,\(Self.base)
+        -
+
+        dn: <GUID=bf967aba-0de6-11d0-a285-00aa003049e2>
+        changetype: delete
+
+        dn: CN=Svc,OU=Sales,\(Self.base)
+        changetype: modify
+        replace: altSecurityIdentities
+        altSecurityIdentities: X509:<I>CN=CA<S>CN=Admin
+        -
+        replace: primaryGroupID
+        primaryGroupID: 512
+        -
+
+        dn: OU=New,\(Self.base)
+        changetype: add
+        objectClass: organizationalUnit
+        ou: New
+        gPLink: [LDAP://cn={0},cn=policies,cn=system,DC=corp,DC=example;0]
+
+        dn: CN=gMSA,OU=Sales,\(Self.base)
+        changetype: add
+        objectClass: msDS-GroupManagedServiceAccount
+        msDS-GroupMSAMembership:: AQAEgA==
+
+        dn: CN=Plain,OU=Sales,\(Self.base)
+        changetype: add
+        objectClass: user
+        description: nothing to see
+
+        """
+        let records = try LDIFParser.parse(file)
+        let review = LDIFImportReview(records, container: Self.base, privilegedGroups: [])
+        let byDN = Dictionary(uniqueKeysWithValues: review.items.map { ($0.dn, $0) })
+        let bySID = try #require(byDN["<SID=S-1-5-21-1-2-3-512>"])
+        #expect(bySID.warnings.contains { $0.contains("GUID or SID") } && bySID.warnings.contains { $0.contains("administrator rights") })
+        #expect(byDN["<GUID=bf967aba-0de6-11d0-a285-00aa003049e2>"]?.warnings.contains { $0.contains("GUID or SID") } == true)
+        let service = try #require(byDN["CN=Svc,OU=Sales,\(Self.base)"])
+        #expect(service.warnings.contains { $0.contains("altSecurityIdentities") } && service.warnings.contains { $0.contains("primaryGroupID") })
+        #expect(byDN["OU=New,\(Self.base)"]?.warnings.contains { $0.contains("gPLink") } == true)
+        #expect(byDN["CN=gMSA,OU=Sales,\(Self.base)"]?.warnings.contains { $0.contains("msDS-GroupMSAMembership") } == true)
+        #expect(byDN["CN=Plain,OU=Sales,\(Self.base)"] == nil)
+    }
+
+    /// A foreign security principal's SID is another domain's: its well-known
+    /// group reads as that domain's, never as this one's.
+    @Test func foreignPrincipalsAreNamedAsAnotherDomains() {
+        #expect(ADValues.foreignPrincipalName("S-1-5-11") == "Authenticated Users")
+        #expect(ADValues.foreignPrincipalName("S-1-5-21-9-9-9-512") == "Domain Admins of another domain (S-1-5-21-9-9-9)")
+        #expect(ADValues.foreignPrincipalName("S-1-5-21-9-9-9-1105") == nil)
+    }
+
     @Test func wellKnownAdministratorsGroups() {
         #expect(LDIFImportReview.privilegedGroup(dn: "CN=x,DC=a", sid: "S-1-5-21-1-2-3-512", adminCount: nil))
         #expect(LDIFImportReview.privilegedGroup(dn: "CN=x,DC=a", sid: "S-1-5-32-544", adminCount: 0))

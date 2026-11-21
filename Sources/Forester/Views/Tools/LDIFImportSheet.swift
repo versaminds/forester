@@ -295,8 +295,14 @@ struct LDIFImportSheet: View {
             var privileged = Set<String>()
             if !groups.isEmpty {
                 // A group that cannot be read is judged by its name alone.
-                let entries = (try? await session.run { try await $0.readEach(groups, attributes: ["adminCount", "objectSid"], skippingErrors: true) }) ?? []
-                let read = Dictionary(entries.map { (DN.normalized($0.dn), $0) }, uniquingKeysWith: { first, _ in first })
+                // Each is kept under the DN the file names it by: the server
+                // answers <SID=…> or <GUID=…> with the entry's real DN.
+                var read: [String: LDAPEntry] = [:]
+                for group in groups {
+                    if let entry = (try? await session.run({ try await $0.read(group, attributes: ["adminCount", "objectSid"]) })) ?? nil {
+                        read[DN.normalized(group)] = entry
+                    }
+                }
                 for group in groups {
                     let entry = read[DN.normalized(group)]
                     let sid = entry?.values("objectSid").first.flatMap(ADValues.sidString)

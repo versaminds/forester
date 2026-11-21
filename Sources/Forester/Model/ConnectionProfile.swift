@@ -418,6 +418,11 @@ final class ProfileStore {
     private var settingsURL: URL {
         (fixedDirectory ?? Self.localDirectory).appendingPathComponent("connection-settings.json")
     }
+    /// Left once the settings were taken from the connections file, so that
+    /// is done once only, whatever becomes of the settings file.
+    private var migratedURL: URL {
+        (fixedDirectory ?? Self.localDirectory).appendingPathComponent("connection-settings.migrated")
+    }
     @ObservationIgnored private var localSettings: [UUID: LocalSettings] = [:]
     @ObservationIgnored private var localSettingsLoaded = false
 
@@ -429,9 +434,24 @@ final class ProfileStore {
     private func applyLocalSettings(_ loaded: [ConnectionProfile]) -> [ConnectionProfile] {
         if !localSettingsLoaded {
             localSettingsLoaded = true
-            if let data = try? Data(contentsOf: settingsURL), let saved = try? JSONDecoder().decode([UUID: LocalSettings].self, from: data) {
-                localSettings = saved
-            } else {
+            let files = FileManager.default
+            if files.fileExists(atPath: settingsURL.path) {
+                if let data = try? Data(contentsOf: settingsURL), let saved = try? JSONDecoder().decode([UUID: LocalSettings].self, from: data) {
+                    localSettings = saved
+                } else {
+                    // Not taken from the connections file instead: that file may
+                    // be another Mac's. Kept aside, and every connection starts
+                    // read-only, trusting the system's certificates only.
+                    let stamp = ISO8601DateFormatter.string(from: Date(), timeZone: .current, formatOptions: [.withFullDate, .withTime])
+                        .replacingOccurrences(of: ":", with: "")
+                    let backup = settingsURL.deletingPathExtension().appendingPathExtension("unreadable-\(stamp).json")
+                    try? files.moveItem(at: settingsURL, to: backup)
+                    localSettings = [:]
+                    loadError = "This Mac's connection settings could not be read; a copy was kept as \(backup.lastPathComponent). Every connection is read-only again and trusts no certificate you pinned."
+                }
+            } else if !files.fileExists(atPath: migratedURL.path) {
+                // The first start of this version on this Mac: the file says
+                // what this Mac decided until now. Once only.
                 for profile in loaded {
                     var settings = LocalSettings(profile)
                     // Bound to what it was set up for, as the person last saw it.
@@ -439,6 +459,11 @@ final class ProfileStore {
                     localSettings[profile.id] = settings
                 }
                 saveLocalSettings()
+            }
+            // Removed after that, the settings are not taken from the file again.
+            if !files.fileExists(atPath: migratedURL.path) {
+                try? files.createDirectory(at: migratedURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+                files.createFile(atPath: migratedURL.path, contents: Data("Connection settings moved from the connections file to connection-settings.json.\n".utf8))
             }
         }
         var added = false

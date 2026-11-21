@@ -236,6 +236,55 @@ func runCannotChangePassword() throws {
     var refused = false
     do { _ = try CannotChangePassword.checked(try SecurityDescriptor(data: original), tampered) } catch { refused = true }
     check("a change that would touch an inherited rule is not written", refused)
+
+    // Undone (forced) after others put denials at the top: a rule's old place
+    // is now among the denials, so it goes after them instead, in order.
+    var denied = try SecurityDescriptor(data: original)
+    try denied.setUserCannotChangePassword(true)
+    denied.dacl?.aces.insert(contentsOf: [ace(ACE.accessDenied, "S-1-5-21-1-2-3-1106"), ace(ACE.accessDenied, "S-1-5-21-1-2-3-1107")], at: 2)
+    try CannotChangePassword.restore(found, in: &denied)
+    check("undone after denials were added before its place, each rule goes where the order allows",
+          SecurityDescriptor.isCanonical(denied.dacl?.aces ?? []) && !denied.userCannotChangePassword
+              && (denied.dacl?.aces ?? []).filter(CannotChangePassword.owns).count == found.count
+              && found.allSatisfy { rule in denied.dacl?.aces.contains(rule.ace) == true })
+    // Undone after someone put the list out of order: refused, not made worse.
+    var disordered = try SecurityDescriptor(data: original)
+    try disordered.setUserCannotChangePassword(true)
+    disordered.dacl?.aces.append(ace(ACE.accessDenied, "S-1-5-21-1-2-3-1108"))
+    var refusedOrder = false
+    do { try CannotChangePassword.restore(found, in: &disordered) } catch { refusedOrder = true }
+    check("undone on a list someone put out of order, it is refused", refusedOrder)
+}
+
+/// This Mac's settings are taken from the connections file once, on the
+/// first start of this version, and never again.
+@MainActor func runMigrationOnce() throws {
+    let dir = FileManager.default.temporaryDirectory.appendingPathComponent("storeprobe-\(UUID().uuidString)")
+    defer { try? FileManager.default.removeItem(at: dir) }
+    try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+    let main = dir.appendingPathComponent("connections.json"), settings = dir.appendingPathComponent("connection-settings.json")
+    var profile = ConnectionProfile()
+    profile.host = "dc.example"
+    profile.readOnly = false
+    profile.trust = TrustPolicy(pinnedFingerprints: ["AA:BB"])
+    try JSONEncoder().encode([profile]).write(to: main)
+    let first = ProfileStore(directory: dir)
+    check("the first start takes this Mac's settings from the file", first.profile(profile.id)?.readOnly == false)
+    // Then the settings file goes, and the connections file says otherwise.
+    try FileManager.default.removeItem(at: settings)
+    var written = profile
+    written.trust = TrustPolicy(pinnedFingerprints: ["EV:IL"], trustAnyCertificate: true)
+    try JSONEncoder().encode([written]).write(to: main)
+    let second = ProfileStore(directory: dir)
+    check("without the settings file later, nothing is taken from the connections file again",
+          second.profile(profile.id)?.readOnly == true && second.profile(profile.id)?.trust == TrustPolicy())
+    // A settings file that cannot be read is kept aside, and nothing is taken from the file.
+    try Data("not json".utf8).write(to: settings)
+    let third = ProfileStore(directory: dir)
+    let backups = try FileManager.default.contentsOfDirectory(atPath: dir.path).filter { $0.hasPrefix("connection-settings.unreadable-") }
+    check("an unreadable settings file is kept aside, and every connection starts read-only, trusting the system's certificates",
+          backups.count == 1 && third.profile(profile.id)?.readOnly == true && third.profile(profile.id)?.trust == TrustPolicy()
+              && third.loadError?.contains("could not be read") == true)
 }
 
 extension Optional {
@@ -309,9 +358,10 @@ func runCannotChangePasswordOnAD() async throws {
     await connection.close()
 }
 
-try MainActor.assumeIsolated { try run() }
-try MainActor.assumeIsolated { try runTrust() }
+try run()
+try runTrust()
 try runCannotChangePassword()
+try runMigrationOnce()
 if ProcessInfo.processInfo.environment["FORESTER_TEST_AD"] == "1" {
     try await runCannotChangePasswordOnAD()
 } else {

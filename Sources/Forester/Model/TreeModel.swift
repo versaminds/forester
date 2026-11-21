@@ -123,9 +123,18 @@ final class TreeModel {
     /// Takes a root and everything loaded beneath it out of the tree.
     func removeRoot(_ id: String) {
         guard roots.contains(id) else { return }
+        // Only what hangs from this root: another root can lie beneath it (an
+        // ancestor domain's root contains this connection's own domain, its
+        // configuration and schema), and what hangs from that one stays.
+        let rootDNs = roots.compactMap { nodes[$0]?.dn }.filter { !$0.isEmpty }
+        func hangsFromIt(_ key: String) -> Bool {
+            guard let node = nodes[key], key == id || key.hasSuffix("," + id) else { return false }
+            return DN.deepestRoot(of: node.dn, in: rootDNs).map(DN.normalized) == id
+        }
+        let removed = nodes.keys.filter(hangsFromIt)
+        if let selection, removed.contains(selection) { self.selection = nil }
+        for key in removed { nodes[key] = nil }
         roots.removeAll { $0 == id }
-        for key in nodes.keys where key == id || key.hasSuffix("," + id) { nodes[key] = nil }
-        if let selection, selection == id || selection.hasSuffix("," + id) { self.selection = nil }
         version += 1
     }
 

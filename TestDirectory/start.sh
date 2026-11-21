@@ -63,7 +63,12 @@ for item in "$RUN"/*(N); do
     *) rm -rf "$item" ;;
   esac
 done
-mkdir -p "$RUN/ad" "$RUN/org" "$RUN/child" "$RUN/child-admin"
+mkdir -p "$RUN/ad" "$RUN/org" "$RUN/child" "$RUN/child-config" "$RUN/child-admin"
+cat > "$RUN/child-rootdse.ldif" <<EOF
+dn:
+defaultNamingContext: DC=child,DC=corp,DC=example
+configurationNamingContext: CN=Configuration,DC=corp,DC=example
+EOF
 
 # ── Certificates: a private CA and a server cert for localhost ───────────────
 # The CA is deliberately not trusted by the system, so connecting exercises the
@@ -125,7 +130,9 @@ EOF
 
 # ── The child domain's slapd ─────────────────────────────────────────────────
 # Its own server, as another domain's controller is: its root DSE names its
-# own domain. The same administrator signs in, as AD lets an account of the
+# own domain and, as every domain controller of a forest does, a copy of
+# the forest's configuration, named in its root DSE with its own domain as
+# the default. The same administrator signs in, as AD lets an account of the
 # forest's root domain sign in on a child domain's controllers: slapd takes
 # a rootdn only beneath a suffix of its own, so a second, empty database
 # holds just that DN (and shows in the root DSE, which AD's would not).
@@ -139,6 +146,7 @@ include $HERE/adtest.schema
 
 pidfile  $RUN/child-slapd.pid
 argsfile $RUN/child-slapd.args
+rootDSE  $RUN/child-rootdse.ldif
 sizelimit size.soft=500 size.hard=500 size.pr=200 size.prtotal=unlimited
 # The forest root domain's administrator may change the child domain.
 access to * by dn.exact="CN=admin,DC=corp,DC=example" write by * read
@@ -151,13 +159,20 @@ directory $RUN/child
 index objectClass,cn,sAMAccountName,member eq
 
 database hdb
+suffix   "CN=Configuration,DC=corp,DC=example"
+rootdn   "CN=admin,CN=Configuration,DC=corp,DC=example"
+rootpw   $ROOTPW
+directory $RUN/child-config
+index objectClass,cn eq
+
+database hdb
 suffix   "CN=admin,DC=corp,DC=example"
 rootdn   "CN=admin,DC=corp,DC=example"
 rootpw   $ROOTPW
 directory $RUN/child-admin
 EOF
 
-for db in ad org child child-admin; do
+for db in ad org child child-config child-admin; do
   cat > "$RUN/$db/DB_CONFIG" <<EOF
 set_cachesize 0 33554432 1
 set_lg_regionmax 262144
@@ -173,6 +188,9 @@ done
   || { cat "$RUN/slapadd.log"; exit 1; }
 "$PYTHON" -I "$HERE/generate_ldif.py" child > "$RUN/child.ldif"
 /usr/sbin/slapadd -q -f "$RUN/child.conf" -b "DC=child,DC=corp,DC=example" -l "$RUN/child.ldif" 2>>"$RUN/slapadd.log" \
+  || { cat "$RUN/slapadd.log"; exit 1; }
+"$PYTHON" -I "$HERE/generate_ldif.py" config > "$RUN/child-config.ldif"
+/usr/sbin/slapadd -q -f "$RUN/child.conf" -b "CN=Configuration,DC=corp,DC=example" -l "$RUN/child-config.ldif" 2>>"$RUN/slapadd.log" \
   || { cat "$RUN/slapadd.log"; exit 1; }
 
 "$SLAPD" -f "$RUN/slapd.conf" -h "ldap://127.0.0.1:$SLAPD_PORT/" -d "${SLAPD_DEBUG:-0}" >"$RUN/slapd.log" 2>&1 &

@@ -48,11 +48,22 @@ without the user meaning to. For example:
   for an account's status on each, and to another domain of the forest you
   browse in the window or open from it
 - a request about an entry of one domain of a forest sent to another
-  domain's server, when several domains are browsed in one window
+  domain's server, when several domains are browsed in one window, whichever
+  domain is the parent; an entry named by `<GUID=…>` or `<SID=…>` (which says
+  nothing of its domain) sent anywhere while another domain is about; or a
+  domain connected to by a DNS name other than the one its naming context
+  spells (a crossRef whose dnsRoot points elsewhere is no domain)
 - a Kerberos sign-in whose ticket could be relayed to another connection (the
   TLS channel binding), or, without TLS, a message sent or taken on that
   connection without Kerberos encryption and numbering, or a sign-in kept
-  with a server Kerberos names other than `ldap/` and the host connected to
+  with a server Kerberos names other than `ldap/` and the host connected to.
+  That name is the one the macOS Kerberos library reports for the server the
+  exchange authenticated (`gss_inquire_context`). The tests show a ticket for
+  another name is refused (asked for `ldap/localhost` while connected to
+  127.0.0.1); that the library reports a name it reached through a DNS alias
+  rather than the name it was given has not been shown here, since the test
+  realm's Kerberos would not follow one without changing this Mac's
+  resolver
 - a SCRAM sign-in kept without the server's proof that it knows the
   password, with fewer than 4,096 rounds of hashing, not bound to the TLS
   connection when the server offers that, or made with "Accept any
@@ -70,7 +81,11 @@ without the user meaning to. For example:
 - a certificate trusted, any certificate accepted, changes allowed or a client
   certificate chosen because the connections file said so (on this Mac or in
   iCloud Drive), rather than by you on this Mac; or an imported connection
-  replacing one already here
+  replacing one already here. By design, the first start of this version on
+  a Mac takes them from the file once, as earlier versions kept them there;
+  never again after that, also when this Mac's settings file is removed or
+  cannot be read (every connection is then read-only, trusting the system's
+  certificates only)
 - a permissions change that writes more than it says: another part of the
   security descriptor (the SACL above all, or the access list when changing
   the owner), an inherited rule, a rule's inheritance widened (object

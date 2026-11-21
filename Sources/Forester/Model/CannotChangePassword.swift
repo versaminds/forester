@@ -29,13 +29,26 @@ enum CannotChangePassword {
     }
 
     /// Takes out the rules the checkbox owns and puts `rules` back, each at
-    /// its place (or the nearest the list now has).
+    /// its place when that keeps the order Windows applies (denials,
+    /// allowances, inherited rules), otherwise after the last rule of its
+    /// kind set on the account. A list that would still be out of order (one
+    /// someone else put out of order meanwhile) is refused.
     static func restore(_ rules: [Placed], in descriptor: inout SecurityDescriptor) throws {
         guard var dacl = descriptor.dacl else { throw SecurityDescriptorError.noAccessList }
         dacl.aces.removeAll(where: owns)
         for rule in rules.sorted(by: { $0.index < $1.index }) {
-            dacl.aces.insert(rule.ace, at: min(rule.index, dacl.aces.count))
+            var candidate = dacl.aces
+            candidate.insert(rule.ace, at: min(rule.index, candidate.count))
+            if !SecurityDescriptor.isCanonical(candidate) {
+                candidate = dacl.aces
+                let place = rule.ace.isDeny
+                    ? candidate.firstIndex { $0.isInherited || !$0.isDeny } ?? candidate.count
+                    : candidate.firstIndex(where: \.isInherited) ?? candidate.count
+                candidate.insert(rule.ace, at: place)
+            }
+            dacl.aces = candidate
         }
+        guard SecurityDescriptor.isCanonical(dacl.aces) else { throw PermissionEditError.notCanonical }
         descriptor.dacl = dacl
     }
 

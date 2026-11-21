@@ -25,10 +25,11 @@ extension DirectorySession {
         if dn.isEmpty { return true }
         let containing = (server?.namingContexts ?? []).filter { DN.isWithin(dn, $0) }
         guard let context = containing.max(by: { DN.components($0).count < DN.components($1).count }) else { return false }
-        let parts = DN.components(dn)
+        // Normalized, so dc written as domainComponent or its OID counts too.
+        let parts = DN.components(DN.normalized(dn))
         let depth = parts.count - DN.components(context).count
         guard depth > 0 else { return true }
-        return DN.rdnAttribute(parts[depth - 1])?.lowercased() != "dc"
+        return DN.rdnAttribute(parts[depth - 1]) != "dc"
     }
 
     /// The domain of the forest an entry belongs to, when this connection's
@@ -50,7 +51,10 @@ extension DirectorySession {
                                         attributes: ["nCName", "dnsRoot", "nETBIOSName"])
         guard let found = (try? await run({ try await $0.pagedSearch(request, pageSize: 500) }))?.entries else { return [] }
         let domains = found.compactMap { entry -> ForestDomain? in
-            guard let dn = entry.string("nCName"), let dns = entry.string("dnsRoot") else { return nil }
+            // Its DNS name is where Forester would connect: only the one its
+            // naming context spells (`ForestRoutes.isConsistent`).
+            guard let dn = entry.string("nCName"), let dns = entry.string("dnsRoot"),
+                  ForestRoutes.isConsistent(nCName: dn, dnsRoot: dns) else { return nil }
             return ForestDomain(dn: dn, dnsName: dns, netbiosName: entry.string("nETBIOSName"))
         }
         .sorted { $0.dnsName.localizedStandardCompare($1.dnsName) == .orderedAscending }

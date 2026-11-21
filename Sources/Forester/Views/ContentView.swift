@@ -317,12 +317,12 @@ struct PasswordPrompt: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            Text("Password for \(session.profile.displayName)").font(.headline)
+            Text("Password for \(VisibleText.reveal(session.profile.displayName))").font(.headline)
             // Where the password goes, said in full: asked again because the
             // connection changed, this is what it changed to.
             VStack(alignment: .leading, spacing: 2) {
-                Text(session.profile.bindName).font(.callout.monospaced())
-                Text("\(session.profile.authentication == .scram ? "SCRAM-SHA-256" : "Simple bind") to \(session.profile.host), port \(session.profile.port), \(ProfileEditor.securityLabel(session.profile.security))\(session.profile.trust.trustAnyCertificate ? ", any certificate accepted" : "")")
+                Text(VisibleText.reveal(session.profile.bindName)).font(.callout.monospaced())
+                Text("\(session.profile.authentication == .scram ? "SCRAM-SHA-256" : "Simple bind") to \(VisibleText.reveal(session.profile.host)), port \(session.profile.port), \(ProfileEditor.securityLabel(session.profile.security))\(session.profile.trust.trustAnyCertificate ? ", any certificate accepted" : "")")
                     .font(.callout)
             }
             .foregroundStyle(.secondary)

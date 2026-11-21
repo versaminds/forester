@@ -122,9 +122,89 @@ enum ForestChecks {
         try expect("a domain that cannot be reached shows why on its root, and nothing else breaks",
                    session.tree.node(rootID)?.error != nil && session.browsedDomain(containing: lieve)?.isOpen == false && stillReads)
         await session.stopBrowsing(child)
-        setenv("FORESTER_TEST_DOMAIN_HOSTS", "child.corp.example=localhost:\(childPort)", 1)
+        setenv("FORESTER_TEST_DOMAIN_HOSTS", "child.corp.example=localhost:\(childPort),corp.example=localhost:\(corpPort)", 1)
         await server.close()
+
+        // Its connection lost, requests that all find it so at once wait for
+        // one new connection: none more is signed in and left open.
+        await session.browse(domain)
+        let lost = try Automation.require(session.browsedDomain(containing: lieve)?.connection)
+        await lost.close()
+        let openedBefore = session.browsedConnectionsOpened
+        let reads = await withTaskGroup(of: Bool.self) { group -> [Bool] in
+            for _ in 0..<5 {
+                group.addTask { @MainActor in (try? await session.run { try await $0.read(lieve, attributes: ["cn"]) }) != nil }
+            }
+            var results: [Bool] = []
+            for await result in group { results.append(result) }
+            return results
+        }
+        let reopened = session.browsedDomain(containing: lieve)?.connection
+        let reopenedAlive = await reopened?.isAlive == true
+        try expect("a lost connection to it is opened again once for every request that found it lost",
+                   reads.allSatisfy { $0 } && session.browsedConnectionsOpened == openedBefore + 1 && reopened !== lost && reopenedAlive)
+        await session.stopBrowsing(child)
         session.setReadOnly(true)
+
+        try await childBrowsesParent(model, corpSession: session, expect: expect)
+    }
+
+    static let corpPort = 10389
+    static let pieter = "CN=Pieter Van Damme,OU=Engineering,OU=Users,OU=Corp,DC=corp,DC=example"
+
+    /// Connected to the child domain, browsing its parent: the parent's root
+    /// contains every DN of the child's, yet the child's own entries stay its
+    /// own, and taking the parent out leaves the child's tree.
+    static func childBrowsesParent(_ model: AppModel, corpSession: DirectorySession,
+                                   expect: (String, Bool) throws -> Void) async throws {
+        var profile = corpSession.profile
+        profile.id = UUID()
+        profile.name = "Child test domain"
+        profile.port = childPort
+        profile.readOnly = true
+        model.store.save(profile)
+        let session = try Automation.require(model.session(for: profile.id))
+        session.connect(password: Automation.testPassword)
+        try await Automation.waitFor("child domain connected") {
+            if case .failed = session.phase { return true }
+            return session.phase.isConnected || session.pendingTrustFailure != nil
+        }
+        if session.pendingTrustFailure != nil {
+            session.trustPendingCertificate()
+            try await Automation.waitFor("child domain connected after trust") { session.phase.isConnected }
+        }
+        if case .failed(let message) = session.phase { throw Automation.AutomationError(message) }
+        let parent = try Automation.require(session.domainsToBrowse.first { $0.dnsName == "corp.example" })
+        try expect("from the child domain, its parent is offered to browse, and a crossRef pointing elsewhere is not",
+                   session.domainsToBrowse.map(\.dnsName) == ["corp.example"])
+        await session.browse(parent)
+        let childRoot = DN.normalized(child), parentRoot = DN.normalized("DC=corp,DC=example")
+        try expect("the parent is one more root, open",
+                   session.tree.roots.contains(parentRoot) && session.browsedDomain(containing: pieter)?.isOpen == true)
+        try expect("the child's own entries and the configuration stay the child's, the parent's go to the parent",
+                   session.browsedDomain(containing: lieve) == nil && session.domainRoot(for: lieve).map(DN.normalized) == childRoot
+                       && session.domainSID(for: lieve) == session.domainSID
+                       && session.browsedDomain(containing: "CN=Partitions,CN=Configuration,DC=corp,DC=example") == nil
+                       && session.domainRoot(for: pieter).map(DN.normalized) == parentRoot)
+        session.open(lieve)
+        try await Automation.waitFor("Lieve shown from her own domain") {
+            session.inspector.entry.map { DN.isSame($0.dn, lieve) } == true && !session.inspector.loading
+        }
+        session.inspector.tab = .membership
+        try await Automation.waitFor("membership read") { !session.inspector.membership.loading }
+        try expect("her primary group is her own domain's, not the parent's",
+                   session.inspector.membership.primaryGroupIsInChildDomain(child))
+        await session.tree.expand(childRoot)
+        try await Automation.waitFor("child root expanded") { session.tree.node(childRoot)?.children != nil }
+        let staff = DN.normalized("OU=Staff,\(child)")
+        await session.stopBrowsing("DC=corp,DC=example")
+        try expect("taking the parent out leaves the child's own tree and the entry shown",
+                   !session.tree.roots.contains(parentRoot) && session.tree.roots.contains(childRoot)
+                       && session.tree.node(staff) != nil && session.tree.node(childRoot) != nil
+                       && session.selectedDN.map { DN.isSame($0, lieve) } == true)
+        session.disconnect()
+        model.delete(profile.id)
+        model.requestedSelection = corpSession.id
     }
 }
 

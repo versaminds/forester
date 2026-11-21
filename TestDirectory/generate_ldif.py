@@ -595,6 +595,11 @@ def child_sid(rid):
 
 add(f"CN=CHILD,{partitions}", ("objectClass", ["top", "crossRef"]), ("cn", "CHILD"), ("nCName", CHILD),
     ("nETBIOSName", "CHILD"), ("dnsRoot", "child.corp.example"), ("systemFlags", "3"))
+# A crossRef whose DNS name is not the one its naming context spells: what a
+# hostile writer of the configuration would add to send a sign-in elsewhere.
+# The app takes it for no domain of the forest.
+add(f"CN=ELSEWHERE,{partitions}", ("objectClass", ["top", "crossRef"]), ("cn", "ELSEWHERE"),
+    ("nCName", f"DC=elsewhere,{BASE}"), ("nETBIOSName", "ELSEWHERE"), ("dnsRoot", "attacker.example"), ("systemFlags", "3"))
 add(CHILD, ("objectClass", ["top", "domain", "domainDNS"]), ("dc", "child"),
     ("objectSid", sid_bytes(*CHILD_SID)), ("objectGUID", guid_bytes(CHILD)), *stamps(600))
 child_users_cn = container(f"CN=Users,{CHILD}", "Users", "Default container for upgraded user accounts")
@@ -746,4 +751,7 @@ if __name__ == "__main__":
     if target == "samba":
         emit_samba(sys.stdout)
     else:
-        emit(sys.stdout, {"ad": BASE, "child": CHILD}.get(target, ORG), exclude=CHILD if target == "ad" else None)
+        # "config": the configuration partition alone, which every domain
+        # controller of the forest holds, the child domain's too.
+        emit(sys.stdout, {"ad": BASE, "child": CHILD, "config": config}.get(target, ORG),
+             exclude=CHILD if target == "ad" else None)

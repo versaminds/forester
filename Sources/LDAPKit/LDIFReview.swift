@@ -43,7 +43,13 @@ public struct LDIFImportReview: Sendable, Equatable {
         }
         items = records.enumerated().compactMap { index, record in
             var item = Item(id: index, line: record.line, verb: "Add", dn: record.dn, changes: [], outside: isOutside(record.dn), warnings: [])
-            let privileged = privilegedGroups.contains(DN.normalized(record.dn)) || Self.isWellKnownAdminGroupName(record.dn)
+            // An entry named by GUID or SID could be any entry, an
+            // administrators' group among them: it is never taken for harmless.
+            let extended = DN.isExtended(record.dn)
+            let privileged = extended || privilegedGroups.contains(DN.normalized(record.dn)) || Self.isWellKnownAdminGroupName(record.dn)
+            if extended {
+                item.warnings.append("Names its entry by GUID or SID rather than by its place, so which entry it is, and what that entry is, cannot be told from the file.")
+            }
             switch record.change {
             case .add(let attributes):
                 // Listed only when it is not where expected or sets something sensitive.
@@ -144,6 +150,14 @@ public struct LDIFImportReview: Sendable, Equatable {
             return "Sets SID history, which gives the account the rights of other accounts."
         case "unicodepwd", "userpassword":
             return "Sets a password."
+        case "altsecurityidentities":
+            return "Sets which certificates or Kerberos names sign in as this account (altSecurityIdentities)."
+        case "msds-groupmsamembership":
+            return "Sets who may read this managed service account's password (msDS-GroupMSAMembership)."
+        case "gplink":
+            return "Links group policies to this container (gPLink), which then apply to everything beneath it."
+        case "primarygroupid":
+            return "Sets the account's primary group (primaryGroupID), a membership the group's member list does not show."
         default:
             return nil
         }

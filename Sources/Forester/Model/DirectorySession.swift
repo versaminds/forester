@@ -57,6 +57,13 @@ final class DirectorySession: Identifiable {
     /// Other domains of the forest browsed in this window, each over a
     /// connection of its own (see ForestBrowsing.swift).
     var browsedDomains: [BrowsedDomain] = []
+    /// A browsed domain's connection being opened again, one per domain, so
+    /// requests that all find it lost wait for the same new one.
+    @ObservationIgnored var reopening: [String: Task<Void, Never>] = [:]
+    #if DEBUG
+    /// Connections opened for browsed domains (the forest checks count them).
+    @ObservationIgnored var browsedConnectionsOpened = 0
+    #endif
     /// Names found for SIDs in permissions.
     @ObservationIgnored var sidNames: [String: (name: String, dn: String?)] = [:]
     /// The editing sheet to show, from whichever place asked for it: the
