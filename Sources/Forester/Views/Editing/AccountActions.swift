@@ -147,21 +147,20 @@ enum AccountActions {
         return try SecurityDescriptor(data: data)
     }
 
+    /// Changes only the Change Password rules for Everyone and SELF, on the
+    /// access list as it is when the change is sent; undoing puts back just
+    /// the rules it replaced (`CannotChangePassword`).
     static func setCannotChangePassword(_ on: Bool, _ entry: LDAPEntry, session: DirectorySession) async -> Bool {
-        do {
-            guard var descriptor = try await readSecurityDescriptor(entry.dn, session: session) else {
-                session.report("The account's security descriptor could not be read.", isError: true)
-                return false
+        let dn = entry.dn
+        let found = CannotChangePassword.Found()
+        let undo = UndoPlan.inverse(dn: dn) { connection in
+            try await CannotChangePassword.rewrite(dn, on: connection) { try CannotChangePassword.restore(found.rules, in: &$0) }
+        }
+        return await session.change(on ? "The user can no longer change the password." : "The user may change the password.", undo: undo) { connection in
+            try await CannotChangePassword.rewrite(dn, on: connection) { descriptor in
+                found.rules = CannotChangePassword.rules(descriptor)
+                try descriptor.setUserCannotChangePassword(on)
             }
-            try descriptor.setUserCannotChangePassword(on)
-            let data = try descriptor.encoded()
-            return await session.change(on ? "The user can no longer change the password." : "The user may change the password.",
-                                        undo: .values(entry.dn, ["nTSecurityDescriptor"], controls: [.sdFlags(4)])) {
-                try await $0.modify(entry.dn, [LDAPModification(.replace, "nTSecurityDescriptor", [data])], controls: [.sdFlags(4)])
-            }
-        } catch {
-            session.report(error.localizedDescription, isError: true)
-            return false
         }
     }
 }

@@ -187,7 +187,7 @@ final class AppModel {
         }
         var profile: ConnectionProfile
         if let existing = store.profiles.first(where: {
-            $0.host.lowercased() == host && $0.bindName.caseInsensitiveCompare(session.profile.bindName) == .orderedSame
+            $0.signsIn(to: host, as: session.profile)
         }) {
             profile = existing
         } else {
@@ -203,7 +203,10 @@ final class AppModel {
             profile.pageSize = session.profile.pageSize
             profile.timeoutSeconds = session.profile.timeoutSeconds
             profile.baseDN = listed.dn
-            store.save(profile)
+            // Its certificate (a certificate sign-in) goes to this domain, which
+            // the forest lists, only over TLS to a certificate this Mac trusts:
+            // the new connection pins none.
+            store.save(profile, choosingCertificate: true)
         }
         guard let other = self.session(for: profile.id) else { return }
         session.lendPassword(to: other)
@@ -227,7 +230,9 @@ final class AppModel {
     }
 
     func save(_ profile: ConnectionProfile, password: String?) {
-        store.save(profile)
+        // Saved from the connection editor: the person chose its certificate
+        // for the server and security shown there.
+        store.save(profile, choosingCertificate: true)
         if profile.authentication.usesPassword, let password, !password.isEmpty {
             if profile.savePassword { Keychain.setPassword(password, for: profile) }
         }

@@ -82,7 +82,12 @@ Passwords are kept in the login keychain while "Remember the password in the
 keychain" is on (the default), and in memory only otherwise. A saved password
 is tied to the server, port, security, user and certificate checking it was
 saved with: change any of them, or import a connection file that does, and
-Forester asks for the password again instead of sending it somewhere new.
+Forester asks for the password again instead of sending it somewhere new,
+saying where it will go. Which certificates you trusted for a connection,
+whether it allows changes, and which client certificate it shows (and to
+what) are decided on each Mac and kept there, never taken from the
+connections file, so a file synced or written by something else cannot grant
+them; an imported connection never replaces one already here.
 
 ## What it does
 

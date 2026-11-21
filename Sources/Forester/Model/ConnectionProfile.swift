@@ -46,8 +46,47 @@ struct ConnectionProfile: Codable, Identifiable, Hashable {
     /// No changes are sent to the directory while this is on. On by default, so
     /// a new connection to a production directory cannot be changed by accident.
     var readOnly = true
+    /// The server and security `clientCertificate` was chosen for, on this
+    /// Mac (`certificateBinding`); never read from the connections file.
+    var clientCertificateFor = ""
 
     init() {}
+
+    /// What a profile file holds. `clientCertificateFor` is this Mac's alone.
+    enum CodingKeys: String, CodingKey {
+        case id, name, host, port, security, authentication, bindName, clientCertificate, savePassword, baseDN
+        case pageSize, timeoutSeconds, trust, readOnly
+    }
+
+    /// The server, port, security and certificate checking a client
+    /// certificate is chosen for: changed, it is chosen again.
+    var certificateBinding: String {
+        [host.trimmingCharacters(in: .whitespaces).lowercased(), String(port), security.rawValue,
+         trust.trustAnyCertificate ? "any-certificate" : "checked-certificate"].joined(separator: "\n")
+    }
+
+    /// A connection to `host` that signs in as `other` does: the same kind of
+    /// sign-in, user and certificate. A certificate sign-in has no user name,
+    /// so the name alone would match any of them.
+    func signsIn(to host: String, as other: ConnectionProfile) -> Bool {
+        self.host.trimmingCharacters(in: .whitespaces).lowercased() == host.lowercased()
+            && authentication == other.authentication
+            && bindName.caseInsensitiveCompare(other.bindName) == .orderedSame
+            && clientCertificate == other.clientCertificate
+    }
+
+    /// The certificates trusted for a connection this profile's settings make
+    /// to another server, or another port of its own (the global catalog,
+    /// other domain controllers, another domain of the forest): the system's,
+    /// and for its own host the certificates pinned for it, never "accept any".
+    /// The password, or the client certificate, goes there with them.
+    func trustForOtherConnection(to otherHost: String, trustedOnce: [String]) -> TrustPolicy {
+        guard otherHost.caseInsensitiveCompare(options.host) == .orderedSame else { return TrustPolicy() }
+        return TrustPolicy(pinnedFingerprints: trust.pinnedFingerprints + trustedOnce)
+    }
+
+    /// The chosen certificate is shown only to what it was chosen for.
+    var certificateIsBoundHere: Bool { !clientCertificate.isEmpty && clientCertificateFor == certificateBinding }
 
     var displayName: String { name.isEmpty ? (host.isEmpty ? "New connection" : host) : name }
 
@@ -70,6 +109,21 @@ struct ConnectionProfile: Codable, Identifiable, Hashable {
     }
 
     var isSample: Bool { host.caseInsensitiveCompare(Self.sampleHost) == .orderedSame }
+
+    /// What could happen to a password typed for this connection, in words;
+    /// nil when it goes only encrypted to a certificate that is checked.
+    var passwordExposure: String? {
+        guard authentication.usesPassword else { return nil }
+        if security == .none {
+            return authentication == .scram
+                ? "Not encrypted: the password is not sent, but everything read travels in clear text."
+                : "Not encrypted: the password is sent in clear text."
+        }
+        if trust.trustAnyCertificate {
+            return "Any certificate is accepted: whoever is between this Mac and the server could read the password."
+        }
+        return nil
+    }
 
     /// What travels readable on a connection without TLS, in words; nil with TLS.
     var plainConnectionNote: String? {
@@ -264,6 +318,9 @@ final class ProfileStore {
     /// on trust: an imported connection is read-only, and trusts no certificate
     /// the user has not approved here (no pins, no "accept any"). A saved
     /// password stays with the connection it was saved for (see `Keychain`).
+    /// Nor does it replace a connection here: one with the same id comes in as
+    /// a connection of its own, unless it is the same one, which is left as it
+    /// is. Returns how many were added.
     @discardableResult
     func importProfiles(from source: URL) throws -> Int {
         let data = try Data(contentsOf: source)
@@ -274,35 +331,139 @@ final class ProfileStore {
             imported = [try JSONDecoder().decode(ConnectionProfile.self, from: data)]
         }
         reloadIfChanged()
+        var added = 0
         for var profile in imported {
-            profile.readOnly = true
-            profile.trust = TrustPolicy()
-            // Which of this Mac's certificates to show a server is chosen
-            // here too, not by whoever wrote the file.
-            profile.clientCertificate = ""
-            if let index = profiles.firstIndex(where: { $0.id == profile.id }) {
-                profiles[index] = profile
-            } else {
-                profiles.append(profile)
+            profile = Self.asImported(profile)
+            if let existing = profiles.first(where: { $0.id == profile.id }) {
+                guard Self.asImported(existing) != profile else { continue }
+                profile.id = UUID()
             }
+            profiles.append(profile)
+            added += 1
         }
         persist()
         onReload?()
-        return imported.count
+        return added
+    }
+
+    /// What an imported connection may carry: no certificate trusted, no
+    /// client certificate chosen (which of this Mac's certificates to show a
+    /// server is chosen here, not by whoever wrote the file), and read-only.
+    static func asImported(_ profile: ConnectionProfile) -> ConnectionProfile {
+        var profile = profile
+        profile.readOnly = true
+        profile.trust = TrustPolicy()
+        profile.clientCertificate = ""
+        profile.clientCertificateFor = ""
+        return profile
     }
 
     func profile(_ id: UUID?) -> ConnectionProfile? {
         profiles.first { $0.id == id }
     }
 
-    func save(_ profile: ConnectionProfile) {
+    /// `choosingCertificate`: the person chose the client certificate for
+    /// the profile as it is now (in the connection editor), so it is shown
+    /// to this server, port and security from now on.
+    func save(_ profile: ConnectionProfile, choosingCertificate: Bool = false) {
         reloadIfChanged()
+        var profile = profile
+        if choosingCertificate {
+            profile.clientCertificateFor = profile.clientCertificate.isEmpty ? "" : profile.certificateBinding
+        }
         if let index = profiles.firstIndex(where: { $0.id == profile.id }) {
             profiles[index] = profile
         } else {
             profiles.append(profile)
         }
         persist()
+    }
+
+    // MARK: This Mac's own decisions
+    //
+    // Which certificates are trusted for a connection, whether changes are
+    // allowed, and which client certificate it shows are decided on this
+    // Mac and kept here, never taken from the connections file: anything
+    // that can write that file (another process, a synced copy) could
+    // otherwise pin its own certificate and catch the saved password, allow
+    // changes, or pick one of this Mac's certificates to show.
+
+    struct LocalSettings: Codable, Equatable {
+        var pinnedFingerprints: [String] = []
+        var trustAnyCertificate = false
+        var readOnly = true
+        var clientCertificate = ""
+        var clientCertificateFor = ""
+
+        init() {}
+
+        init(_ profile: ConnectionProfile) {
+            pinnedFingerprints = profile.trust.pinnedFingerprints
+            trustAnyCertificate = profile.trust.trustAnyCertificate
+            readOnly = profile.readOnly
+            clientCertificate = profile.clientCertificate
+            clientCertificateFor = profile.clientCertificateFor
+        }
+
+        func apply(to profile: inout ConnectionProfile) {
+            profile.trust = TrustPolicy(pinnedFingerprints: pinnedFingerprints, trustAnyCertificate: trustAnyCertificate)
+            profile.readOnly = readOnly
+            profile.clientCertificate = clientCertificate
+            profile.clientCertificateFor = clientCertificateFor
+        }
+    }
+
+    /// Beside the local connections file, also when the connections are in
+    /// iCloud Drive: these do not follow the user to another Mac.
+    private var settingsURL: URL {
+        (fixedDirectory ?? Self.localDirectory).appendingPathComponent("connection-settings.json")
+    }
+    @ObservationIgnored private var localSettings: [UUID: LocalSettings] = [:]
+    @ObservationIgnored private var localSettingsLoaded = false
+
+    /// Gives each profile this Mac's settings for it. The first time (this
+    /// Mac had no settings yet, as on the first start of this version), they
+    /// are taken from the file as this Mac last saved it; a connection that
+    /// arrives later (from another Mac) starts read-only, trusting no
+    /// certificate beyond the system's and showing none of this Mac's.
+    private func applyLocalSettings(_ loaded: [ConnectionProfile]) -> [ConnectionProfile] {
+        if !localSettingsLoaded {
+            localSettingsLoaded = true
+            if let data = try? Data(contentsOf: settingsURL), let saved = try? JSONDecoder().decode([UUID: LocalSettings].self, from: data) {
+                localSettings = saved
+            } else {
+                for profile in loaded {
+                    var settings = LocalSettings(profile)
+                    // Bound to what it was set up for, as the person last saw it.
+                    if !settings.clientCertificate.isEmpty { settings.clientCertificateFor = profile.certificateBinding }
+                    localSettings[profile.id] = settings
+                }
+                saveLocalSettings()
+            }
+        }
+        var added = false
+        let applied = loaded.map { profile -> ConnectionProfile in
+            var profile = profile
+            if localSettings[profile.id] == nil {
+                localSettings[profile.id] = LocalSettings()
+                added = true
+            }
+            localSettings[profile.id]?.apply(to: &profile)
+            return profile
+        }
+        if added { saveLocalSettings() }
+        return applied
+    }
+
+    private func saveLocalSettings() {
+        do {
+            try FileManager.default.createDirectory(at: settingsURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+            let encoder = JSONEncoder()
+            encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+            try encoder.encode(localSettings).write(to: settingsURL, options: .atomic)
+        } catch {
+            loadError = "This Mac's connection settings could not be saved: \(error.localizedDescription)"
+        }
     }
 
     func delete(_ id: UUID) {
@@ -422,7 +583,7 @@ final class ProfileStore {
 
     private func load() {
         guard FileManager.default.fileExists(atPath: url.path) else {
-            profiles = merged([])
+            profiles = applyLocalSettings(merged([]))
             return
         }
         do {
@@ -430,7 +591,7 @@ final class ProfileStore {
             loadedModification = Self.modification(url)
             loadError = nil
             unsavedUnreadable = false
-            profiles = merged(known)
+            profiles = applyLocalSettings(merged(known))
         } catch {
             // The next save replaces the file (and, in iCloud Drive, every
             // Mac's copy), so each unreadable version is kept first, under a
@@ -458,6 +619,10 @@ final class ProfileStore {
     @ObservationIgnored private var unsavedUnreadable = false
 
     private func persist() {
+        // This Mac's settings are those of the profiles as they are here.
+        localSettings = Dictionary(profiles.map { ($0.id, LocalSettings($0)) }, uniquingKeysWith: { first, _ in first })
+        localSettingsLoaded = true
+        saveLocalSettings()
         guard !unsavedUnreadable else { return }
         do {
             try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)

@@ -318,9 +318,22 @@ struct PasswordPrompt: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             Text("Password for \(session.profile.displayName)").font(.headline)
-            Text(session.profile.bindName).font(.callout.monospaced()).foregroundStyle(.secondary)
+            // Where the password goes, said in full: asked again because the
+            // connection changed, this is what it changed to.
+            VStack(alignment: .leading, spacing: 2) {
+                Text(session.profile.bindName).font(.callout.monospaced())
+                Text("\(session.profile.authentication == .scram ? "SCRAM-SHA-256" : "Simple bind") to \(session.profile.host), port \(session.profile.port), \(ProfileEditor.securityLabel(session.profile.security))\(session.profile.trust.trustAnyCertificate ? ", any certificate accepted" : "")")
+                    .font(.callout)
+            }
+            .foregroundStyle(.secondary)
+            .textSelection(.enabled)
             if let message {
                 Text(message).font(.callout).foregroundStyle(.red)
+            }
+            if let warning = session.profile.passwordExposure {
+                Label(warning, systemImage: "exclamationmark.triangle.fill")
+                    .font(.callout).foregroundStyle(.orange)
+                    .fixedSize(horizontal: false, vertical: true)
             }
             SecureField("Password", text: $password)
                 .textFieldStyle(.roundedBorder)

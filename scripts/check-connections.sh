@@ -1,19 +1,29 @@
 #!/bin/zsh
 # SPDX-License-Identifier: LicenseRef-PolyForm-Shield-1.0.0
 # Copyright © 2026 VersaMinds
-# Checks that Forester 1.1.1 can still read and write back the connections
-# this version saves, without losing the ones it cannot read (SCRAM and
-# certificate sign-in live in connections-1.2.json; see ProfileStore).
+# Checks the app's saved connections, which the unit tests (of LDAPKit only)
+# cannot reach:
 #
-#   scripts/check-connections-compatibility.sh
+# - Forester 1.1.1 still reads and writes back the connections this version
+#   saves, without losing the ones it cannot read (SCRAM and certificate
+#   sign-in live in connections-1.2.json);
+# - what the connections file may not decide on this Mac (pinned
+#   certificates, certificate checking, allowing changes, the client
+#   certificate and what it is shown to), what an import may not replace, the
+#   trust of other connections made with a profile's settings, and what the
+#   password prompt warns of;
+# - "User cannot change password" changes and undoes only its own rules.
+#
+#   scripts/check-connections.sh
 #
 # Builds a small program in a temporary folder from this checkout's
-# ConnectionProfile.swift and 1.1.1's own profile decoder (from the v1.1.1
-# tag), and runs it against a temporary folder. Nothing of yours is read.
+# ConnectionProfile.swift and CannotChangePassword.swift, and 1.1.1's own
+# profile decoder (from the v1.1.1 tag), and runs it against a temporary
+# folder. Nothing of yours is read or written.
 set -euo pipefail
 
 ROOT=${0:A:h:h}
-WORK=$(mktemp -d -t forester-compatibility)
+WORK=$(mktemp -d -t forester-connections)
 trap 'rm -rf "$WORK"' EXIT
 mkdir -p "$WORK/Sources/Probe"
 
@@ -28,8 +38,10 @@ let package = Package(
                                 swiftSettings: [.swiftLanguageMode(.v5)])]
 )
 EOF
-ln -s "$ROOT/Sources/Forester/Model/ConnectionProfile.swift" "$WORK/Sources/Probe/ConnectionProfile.swift"
-cp "$ROOT/scripts/connections-compatibility/main.swift" "$WORK/Sources/Probe/main.swift"
+for file in ConnectionProfile CannotChangePassword; do
+  ln -s "$ROOT/Sources/Forester/Model/$file.swift" "$WORK/Sources/Probe/$file.swift"
+done
+cp "$ROOT/scripts/connections-checks/main.swift" "$WORK/Sources/Probe/main.swift"
 # 1.1.1's ConnectionProfile, from its declaration to ProfileStore's, renamed.
 {
   print "import Foundation\nimport LDAPKit"

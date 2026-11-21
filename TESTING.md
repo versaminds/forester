@@ -113,24 +113,47 @@ To run one suite:
 swift test --filter FilterTests
 ```
 
-### Saved connections and Forester 1.1
+### Saved connections
+
+The unit tests are LDAPKit's; the app's saved connections are checked by a
+small program built from the app's own `ConnectionProfile.swift` and
+`CannotChangePassword.swift` in a temporary folder:
+
+```bash
+scripts/check-connections.sh
+```
 
 Forester 1.1 reads `connections.json` whole, and on a Mac sharing it through
 iCloud Drive a connection it cannot read would make it save its own list over
 everyone's. Connections that sign in with SCRAM or a certificate therefore
-live in `connections-1.2.json` beside it. This checks that 1.1.1's own
-decoder and encoder (taken from the `v1.1.1` tag) read this version's file,
-write it back, and lose nothing:
+live in `connections-1.2.json` beside it. Eleven checks use 1.1.1's own
+decoder and encoder (taken from the `v1.1.1` tag): 1.1.1 reads the
+connections it knows; after it changes one, adds one and reorders them, every
+connection is still there in the order last saved here, its change kept and
+its new one last; a connection written by a newer Forester that this one
+cannot read survives a save; a connection changed back to a simple bind
+moves to where 1.1.1 reads it.
 
-```bash
-scripts/check-connections-compatibility.sh
-```
+Twelve more check what the file may not decide. Pinned certificates,
+accepting any certificate, allowing changes and the client certificate are
+this Mac's (`connection-settings.json`, beside the local connections file,
+never in iCloud Drive): upgrading keeps them from the file once; a file
+written later changes none of them, and a connection that arrives in it
+starts read-only, trusting the system's certificates only. A client
+certificate is shown only to the server, port, security and certificate
+checking it was chosen for in the editor. An import never replaces a
+connection here. The global catalog and other servers get the system's
+certificates, and on the same host this connection's pins, never "accept
+any". Another domain reuses a saved connection only with the same kind of
+sign-in, user and certificate. The password prompt warns of clear text and of
+any certificate accepted. And "User cannot change password" changes only its
+own rules: undone, they come back where they were, with a rule added
+meanwhile kept, and with nothing added the very bytes return.
 
-Eleven checks: 1.1.1 reads the connections it knows; after it changes one,
-adds one and reorders them, every connection is still there in the order
-last saved here, its change kept and its new one last; a connection written
-by a newer Forester that this one cannot read survives a save; a connection
-changed back to a simple bind moves to where 1.1.1 reads it.
+With `FORESTER_TEST_AD=1` and the domain controller of step 6 running, three
+more do the last against it: turned on, AD refuses the user's own password
+change; undone after another administrator added a rule, the rule stays and
+the user may change the password again.
 
 ## 2. Start the test directory
 
@@ -515,7 +538,7 @@ descriptor but enforces none of it, step 6 does)
 | Do | Expect |
 |---|---|
 | Sidebar **⋯ › Export Selected Connection…** or **Export All Connections…** | A `.forester` file. It holds no passwords. |
-| **Import Connections…** of that file | The connections again, without duplicates, each read-only and trusting no certificate, since a connection file can come from anyone. A saved password is used only while the server, port, security, user and certificate checking are what it was saved with; otherwise Forester asks for it. |
+| **Import Connections…** of that file | Nothing added: the same connections are here already. Change one first, and the import adds it as a connection of its own beside it, read-only and trusting no certificate, since a connection file can come from anyone; nothing here is replaced. A saved password is used only while the server, port, security, user and certificate checking are what it was saved with; otherwise Forester asks for it. |
 | **Forester › Settings…** › **Keep connections in iCloud Drive** | The connections move to iCloud Drive and appear on your other Macs signed in to the same account. Passwords stay in each Mac's keychain. |
 
 ### Things that should fail cleanly

@@ -44,7 +44,17 @@ without the user meaning to. For example:
   connection when the server offers that; or a password saved for SCRAM
   sent in a simple bind
 - a client certificate shown to a server other than the one it was chosen
-  for, or a certificate sign-in that goes on as something else when it fails
+  for, or after the connection's server, port, security or certificate
+  checking changed without it being chosen again; or a certificate sign-in
+  that goes on as something else when it fails. By design, and only over TLS
+  to certificates this Mac trusts (or, on the same host, the ones pinned for
+  the connection), it is also shown to the same domain's global catalog and
+  other domain controllers, and to another domain of the forest browsed or
+  opened from it, as the password is
+- a certificate trusted, any certificate accepted, changes allowed or a client
+  certificate chosen because the connections file said so (on this Mac or in
+  iCloud Drive), rather than by you on this Mac; or an imported connection
+  replacing one already here
 - a permissions change that writes more than it says: another part of the
   security descriptor (the SACL above all, or the access list when changing
   the owner), an inherited rule, or anything in the descriptor besides the

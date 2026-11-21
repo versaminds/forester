@@ -230,7 +230,10 @@ struct ProfileEditor: View {
         } else if certificates.isEmpty {
             FormFooter("The keychain holds no certificate with its private key. Import yours (a .p12 file) into Keychain Access, then open this again.")
         } else {
-            FormFooter("Signs in as the account the server maps this certificate to (SASL EXTERNAL). No password is typed or kept. macOS asks before Forester first uses the certificate's key.")
+            FormFooter("Signs in as the account the server maps this certificate to (SASL EXTERNAL). No password is typed or kept. macOS asks before Forester first uses the certificate's key."
+                       + (!draft.clientCertificate.isEmpty && !draft.certificateIsBoundHere
+                          ? " It is shown to \(draft.host.isEmpty ? "this server" : draft.host), port \(draft.port), only once you save; changing the server or security later asks for it again."
+                          : ""))
         }
     }
 

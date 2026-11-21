@@ -420,6 +420,11 @@ final class DirectorySession: Identifiable {
     /// for every connection: it may have been removed or renewed meanwhile.
     private func withClientIdentity(_ options: LDAPConnection.Options) throws -> LDAPConnection.Options {
         guard profile.authentication == .certificate else { return options }
+        // Chosen for another server, port or certificate checking (the
+        // connection was changed since, or by another Mac): asked again.
+        guard profile.clientCertificate.isEmpty || profile.certificateIsBoundHere else {
+            throw LDAPError.signIn("This connection's server or security changed since its certificate was chosen. Edit the connection and choose the certificate again to show it to this server.")
+        }
         guard let identity = ClientCertificates.identity(profile.clientCertificate) else {
             throw LDAPError.signIn(profile.clientCertificate.isEmpty
                 ? "Choose the certificate to sign in with: Edit the connection."
@@ -447,24 +452,25 @@ final class DirectorySession: Identifiable {
     /// A separate connection to another server (another domain controller)
     /// with this profile's credentials. The caller closes it.
     ///
-    /// The host comes from directory data, so the password goes there only
-    /// over TLS, and only to a server whose certificate this Mac trusts: the
-    /// certificates trusted for this profile's own server are not carried over.
-    /// SCRAM does not send the password, but an exchange recorded on a plain
-    /// connection is still something to guess it against.
+    /// The host comes from directory data, so the password, or the client
+    /// certificate, goes there only over TLS, and only to a server whose
+    /// certificate this Mac trusts (or, on this profile's own host, one pinned
+    /// for it): never with any certificate accepted, which this connection
+    /// itself may do (`trustForOtherConnection`). SCRAM does not send the
+    /// password, but an exchange recorded on a plain connection is still
+    /// something to guess it against.
     func openConnection(to host: String, port: Int? = nil, timeout: TimeInterval) async throws -> LDAPConnection {
         guard profile.security != .none || !profile.authentication.usesPassword else {
             throw LDAPError.connectionFailed("Not contacted: this connection does not use TLS, so signing in there would expose the password.")
+        }
+        guard profile.security != .none || profile.authentication != .certificate else {
+            throw LDAPError.connectionFailed("Not contacted: a certificate is shown only over TLS.")
         }
         var options = try withClientIdentity(profile.options)
         options.host = host
         if let port { options.port = port }
         options.timeout = timeout
-        if host.caseInsensitiveCompare(profile.options.host) == .orderedSame {
-            options.trust.pinnedFingerprints += trustedOnce
-        } else {
-            options.trust = TrustPolicy()
-        }
+        options.trust = profile.trustForOtherConnection(to: host, trustedOnce: trustedOnce)
         let other = LDAPConnection(options)
         do {
             try await other.open()
