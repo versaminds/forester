@@ -307,10 +307,13 @@ struct ProfileEditor: View {
                 let info = ServerInfo(rootDSE: try await connection.rootDSE())
                 let who = try? await connection.whoAmI()
                 let (secure, sealed) = (await connection.isSecure, await connection.isSealed)
+                let kerberosServer = await connection.kerberosServer
                 guard !Task.isCancelled else { return }
                 var text = "Connected to \(info.kind.label)"
                 if let host = info.dnsHostName { text += " (\(host))" }
                 text += sealed ? ", encrypted by Kerberos" : (secure ? " over TLS" : ", unencrypted")
+                // Without TLS, the name Kerberos authenticated is what says who the server is.
+                if let kerberosServer { text += ", Kerberos server \(kerberosServer)" }
                 if let who, who != "anonymous" { text += ", bound as \(who.replacingOccurrences(of: "dn:", with: ""))" }
                 if let context = info.defaultNamingContext { text += ". Default naming context \(context)." }
                 testState = .success(text)

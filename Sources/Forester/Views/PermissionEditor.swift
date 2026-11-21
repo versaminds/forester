@@ -105,6 +105,11 @@ struct PrincipalField: View {
     private func useTyped() {
         guard let value = ADValues.canonicalSID(typed) else { return }
         choose(value, label: ADValues.wellKnownName(value, inDomain: session.domainSID).map { PrincipalLabel(name: $0) })
+        // An account found in the directory by its SID is named, with its DN.
+        Task {
+            guard let found = await session.principalNames([value])[value], let dn = found.dn, sid == value else { return }
+            names[value] = PrincipalLabel(name: found.name, dn: dn)
+        }
     }
 }
 
