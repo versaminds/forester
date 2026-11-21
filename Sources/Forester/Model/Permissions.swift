@@ -9,13 +9,17 @@ import LDAPKit
 struct Permissions {
     var owner: String?
     var rules: [AccessRule]
+    /// The DACL's entries, each at its rule's `id`.
+    var aces: [SecurityDescriptor.ACE]
     /// Attributes this account may write here (allowedAttributesEffective).
     var writableAttributes: [String]
     /// Classes this account may create beneath it (allowedChildClassesEffective).
     var creatableClasses: [String]
-    /// Which parts of the security descriptor this account may change.
-    var mayChangePermissions: Bool
-    var mayChangeOwner: Bool
+    /// Which parts of the security descriptor this account may change; nil
+    /// when the server does not say (one that is not AD), which then decides
+    /// when asked.
+    var mayChangePermissions: Bool?
+    var mayChangeOwner: Bool?
 }
 
 extension DirectorySession {
@@ -101,11 +105,27 @@ extension DirectorySession {
         let descriptor = try SecurityDescriptor(data: data)
         let names = await schemaGUIDNames()
         let rules = AccessRules.describe(descriptor.dacl) { names[$0] }
-        let sdRights = entry.int("sDRightsEffective") ?? 0
-        return Permissions(owner: descriptor.owner, rules: rules,
+        let sdRights = entry.int("sDRightsEffective")
+        return Permissions(owner: descriptor.owner, rules: rules, aces: descriptor.dacl?.aces ?? [],
                            writableAttributes: entry.strings("allowedAttributesEffective").sorted { $0.localizedStandardCompare($1) == .orderedAscending },
                            creatableClasses: entry.strings("allowedChildClassesEffective").sorted { $0.localizedStandardCompare($1) == .orderedAscending },
-                           mayChangePermissions: sdRights & 0x4 != 0, mayChangeOwner: sdRights & 0x1 != 0)
+                           mayChangePermissions: sdRights.map { $0 & 0x4 != 0 }, mayChangeOwner: sdRights.map { $0 & 0x1 != 0 })
+    }
+
+    /// Makes one change to an entry's permissions (see
+    /// `LDAPConnection.changePermissions`), recorded with its opposite: Undo
+    /// applies that to the permissions as they are then, so a rule someone
+    /// else added meanwhile stays, and a rule that is gone is reported.
+    @discardableResult
+    func changePermissions(of dn: String, _ change: PermissionChange, words: String) async -> Bool {
+        await self.change(words, undo: .inverse(dn: dn) { try await $0.changePermissions(of: dn, change.inverse) }) {
+            try await $0.changePermissions(of: dn, change)
+        }
+    }
+
+    /// The SID of a user, group or computer, for an access rule or an owner.
+    func sid(of dn: String) async throws -> String? {
+        try await run { try await $0.read(dn, attributes: ["objectSid"]) }?.values("objectSid").first.flatMap(ADValues.sidString)
     }
 }
 

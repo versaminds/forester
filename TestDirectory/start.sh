@@ -43,7 +43,16 @@ if [[ -z $PYTHON ]]; then
 fi
 
 "$HERE/stop.sh" >/dev/null 2>&1 || true
-rm -rf "$RUN"
+# The other test servers keep their files here too: start-ad.sh its Kerberos
+# configuration and ticket, start-sasl.sh its certificates. Only this
+# server's own are removed, so starting it does not break theirs.
+mkdir -p "$RUN"
+for item in "$RUN"/*(N); do
+  case ${item:t} in
+    krb5.conf|krb5cc|samba-seed.ldif|samba-seed.log|sasl) ;;
+    *) rm -rf "$item" ;;
+  esac
+done
 mkdir -p "$RUN/ad" "$RUN/org"
 
 # ── Certificates: a private CA and a server cert for localhost ───────────────

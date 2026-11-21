@@ -43,6 +43,10 @@ without the user meaning to. For example:
   sent in a simple bind
 - a client certificate shown to a server other than the one it was chosen
   for, or a certificate sign-in that goes on as something else when it fails
+- a permissions change that writes more than it says: another part of the
+  security descriptor (the SACL above all, or the access list when changing
+  the owner), an inherited rule, or anything in the descriptor besides the
+  change shown in words
 - an update installed that is not signed with VersaMinds' update key, or the
   update feed read before you chose to check for updates
 

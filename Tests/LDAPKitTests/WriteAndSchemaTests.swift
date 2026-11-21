@@ -103,6 +103,31 @@ struct WriteTests {
         await c.close()
     }
 
+    /// The test directory keeps the descriptor as an opaque value (it knows
+    /// no security descriptor flags), so the whole of it comes back: a rule
+    /// added and removed, and the owner changed and back, leave its bytes
+    /// as they were.
+    @Test func permissionsChangeAndChangeBack() async throws {
+        let c = try await admin()
+        let dn = "CN=svc_backup,OU=Service Accounts,OU=Corp,\(base)"
+        let original = try #require(try await c.read(dn, attributes: ["nTSecurityDescriptor"])?.values("nTSecurityDescriptor").first)
+        var draft = AccessRuleDraft()
+        draft.sid = "S-1-5-11"
+        draft.mask = 0x20094
+        draft.scope = .thisAndDescendants
+        let rule = try draft.ace()
+        try await c.changePermissions(of: dn, .add(rule))
+        let added = try SecurityDescriptor(data: try #require(try await c.read(dn, attributes: ["nTSecurityDescriptor"])?.values("nTSecurityDescriptor").first))
+        #expect(added.dacl?.aces.contains(rule) == true)
+        try await c.changePermissions(of: dn, PermissionChange.add(rule).inverse)
+        let owner = try #require(added.owner)
+        try await c.changePermissions(of: dn, .owner(from: owner, to: "S-1-5-32-544"))
+        try await c.changePermissions(of: dn, .owner(from: "S-1-5-32-544", to: owner))
+        let after = try #require(try await c.read(dn, attributes: ["nTSecurityDescriptor"])?.values("nTSecurityDescriptor").first)
+        await c.close()
+        #expect(after == original)
+    }
+
     @Test func schemaIsReadAndAnswersQuestions() async throws {
         let c = try await admin()
         let schema = try #require(try await c.schema(rootDSE: try await c.rootDSE()))

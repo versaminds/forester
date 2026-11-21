@@ -6,18 +6,48 @@ import SwiftUI
 
 /// Who may do what with an Active Directory object: its owner and access
 /// rules in words, in the order the server applies them, and what the
-/// signed-in account itself may do here. Read-only.
+/// signed-in account itself may do here. With changes allowed, rules set on
+/// the object are added, changed and removed, and the owner changed, as
+/// Advanced Security in Active Directory Users and Computers does it.
 struct PermissionsView: View {
     let session: DirectorySession
     let entry: LDAPEntry
     @State private var permissions: Permissions?
     @State private var names: [String: (name: String, dn: String?)] = [:]
+    /// Names for the editor, with whoever it is given.
+    @State private var labels: [String: String] = [:]
+    @State private var guidNames: [String: SchemaGUIDName] = [:]
     @State private var loading = true
     @State private var error: String?
     @State private var filter = ""
     @State private var showInherited = true
     @State private var onlyChanges = false
     @State private var selection: Set<AccessRule.ID> = []
+    @State private var editing: Editing?
+    @State private var removing: AccessRule?
+
+    enum Editing: Identifiable {
+        case add
+        case change(SecurityDescriptor.ACE, at: Int)
+        case owner(String)
+
+        var id: String {
+            switch self {
+            case .add: return "add"
+            case .change(_, let index): return "change \(index)"
+            case .owner: return "owner"
+            }
+        }
+    }
+
+    /// The one rule chosen in the table.
+    private var chosen: AccessRule? {
+        guard selection.count == 1, let id = selection.first else { return nil }
+        return permissions?.rules.first { $0.id == id }
+    }
+
+    private var mayChangeRules: Bool { session.canWrite && permissions?.mayChangePermissions != false }
+    private var mayChangeOwner: Bool { session.canWrite && permissions?.mayChangeOwner != false && permissions?.owner != nil }
 
     private var rules: [AccessRule] {
         let words = filter.lowercased().split(separator: " ").map(String.init)
@@ -60,15 +90,81 @@ struct PermissionsView: View {
                     Divider()
                     table
                     Divider()
+                    editBar(permissions)
                     Text("In the order Active Directory applies them: rules set on this object first (denials before allowances), then inherited ones. A denial set here outweighs an allowance, and an allowance set here outweighs an inherited denial.")
                         .font(.caption).foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                         .padding(.horizontal, 16)
-                        .padding(.vertical, 8)
+                        .padding(.bottom, 8)
                 }
             }
         }
-        .task(id: entry.dn) { await load() }
+        // Again after every change in this window, an undo among them.
+        .task(id: "\(entry.dn)|\(session.history.first?.id.uuidString ?? "")") { await load() }
+        .sheet(item: $editing) { editing in
+            switch editing {
+            case .add:
+                PermissionRuleSheet(session: session, dn: entry.dn, original: nil, guidNames: guidNames, names: $labels) {}
+            case .change(let ace, let index):
+                PermissionRuleSheet(session: session, dn: entry.dn, original: (ace, index), guidNames: guidNames, names: $labels) {}
+            case .owner(let owner):
+                OwnerSheet(session: session, dn: entry.dn, owner: owner, names: $labels) {}
+            }
+        }
+        .alert("Remove this rule?", isPresented: Binding(get: { removing != nil }, set: { if !$0 { removing = nil } })) {
+            Button("Remove Rule", role: .destructive) {
+                guard let rule = removing, let change = removal(rule) else { return }
+                Task { await session.changePermissions(of: entry.dn, change, words: words(change)) }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            if let rule = removing, let change = removal(rule) {
+                Text(words(change) + " The other rules stay as they are. Edit › Undo takes it back.")
+            }
+        }
+    }
+
+    private func removal(_ rule: AccessRule) -> PermissionChange? {
+        guard let aces = permissions?.aces, aces.indices.contains(rule.id) else { return nil }
+        return .remove(aces[rule.id], at: rule.id)
+    }
+
+    private func words(_ change: PermissionChange) -> String {
+        change.words(who: { labels[$0] ?? name($0) }, names: { guidNames[$0] ?? SchemaGUIDName.builtIn[$0] })
+    }
+
+    /// Add, change and remove the rules set here, and change the owner.
+    @ViewBuilder
+    private func editBar(_ permissions: Permissions) -> some View {
+        if session.canWrite {
+            editButtons(permissions)
+        } else {
+            Text("Read-only. Click Read-only in the toolbar, or press ⌥⌘E, to change permissions.")
+                .font(.caption).foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 16)
+                .padding(.vertical, 8)
+        }
+    }
+
+    private func editButtons(_ permissions: Permissions) -> some View {
+        HStack(spacing: 8) {
+            Button("Add Rule…") { editing = .add }
+                .disabled(!mayChangeRules)
+            Button("Change…") {
+                if let rule = chosen { editing = .change(permissions.aces[rule.id], at: rule.id) }
+            }
+            .disabled(!mayChangeRules || chosen.map { $0.inherited || AccessRuleDraft(permissions.aces[$0.id]) == nil } ?? true)
+            .help(chosen?.inherited == true ? "Inherited from a container above: change it there." : "Change the chosen rule")
+            Button("Remove") { removing = chosen }
+                .disabled(!mayChangeRules || chosen.map(\.inherited) ?? true)
+                .help(chosen?.inherited == true ? "Inherited from a container above: remove it there." : "Remove the chosen rule")
+            Spacer()
+            Button("Change Owner…") { if let owner = permissions.owner { editing = .owner(owner) } }
+                .disabled(!mayChangeOwner)
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 8)
     }
 
     private func summary(_ permissions: Permissions) -> some View {
@@ -97,8 +193,8 @@ struct PermissionsView: View {
             let count = permissions.creatableClasses.count
             parts.append("create \(count == 1 ? "one kind" : "\(count) kinds") of object beneath it")
         }
-        if permissions.mayChangePermissions { parts.append("change its permissions") }
-        if permissions.mayChangeOwner { parts.append("change its owner") }
+        if permissions.mayChangePermissions == true { parts.append("change its permissions") }
+        if permissions.mayChangeOwner == true { parts.append("change its owner") }
         // whoami answers "dn:CN=…" or, on AD, "u:DOMAIN\\user".
         let who = session.identity.map { identity -> String in
             if identity.hasPrefix("dn:") { return DN.displayName(String(identity.dropFirst(3))) }
@@ -171,10 +267,14 @@ struct PermissionsView: View {
             var sids = Set(found.rules.map(\.sid))
             if let owner = found.owner { sids.insert(owner) }
             let resolved = await session.principalNames(sids)
+            let schemaNames = await session.schemaGUIDNames()
             // Another entry chosen meanwhile has its own load running.
             guard !Task.isCancelled else { return }
             names = resolved
+            labels.merge(resolved.mapValues(\.name)) { _, new in new }
+            guidNames = schemaNames
             permissions = found
+            selection = []
         } catch {
             guard !Task.isCancelled else { return }
             permissions = nil

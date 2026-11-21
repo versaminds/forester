@@ -255,7 +255,34 @@ enum ADChecks {
                        && permissions.rules.contains { names[$0.sid]?.name == "Domain Admins" })
         try expect("schema GUIDs are named, not shown as numbers",
                    permissions.rules.contains { rule in rule.access.contains { $0.contains("Personal Information") || $0.contains("General Information") } })
-        try expect("what the signed-in account may do here is read", !permissions.writableAttributes.isEmpty && permissions.mayChangePermissions)
+        try expect("what the signed-in account may do here is read", !permissions.writableAttributes.isEmpty && permissions.mayChangePermissions == true)
+        // Permissions changed the way the Permissions tab changes them, and
+        // undone from the change history: the DACL comes back byte for byte.
+        func dacl() async throws -> Data? {
+            try await session.run { try await $0.read(user, attributes: ["nTSecurityDescriptor"], controls: [.sdFlags(SecurityDescriptor.daclPart)]) }?
+                .values("nTSecurityDescriptor").first
+        }
+        let daclBefore = try await dacl()
+        var draft = AccessRuleDraft()
+        draft.sid = "S-1-5-11"
+        draft.mask = 0x20
+        draft.objectType = UUID(uuidString: "bf967950-0de6-11d0-a285-00aa003049e2") // description
+        let rule = try draft.ace()
+        let ruleAdded = await session.changePermissions(of: user, .add(rule), words: "Added a rule.")
+        let withRule = try await session.permissions(of: user)
+        try expect("a rule is added to a user's permissions", ruleAdded && withRule.aces.contains(rule)
+                       && withRule.rules.contains { $0.access == ["Write description"] && !$0.inherited })
+        _ = await session.undo(try Automation.require(session.history.first).id)
+        let daclUndone = try await dacl()
+        try expect("undoing it gives back the access list byte for byte", daclUndone == daclBefore)
+        let owner = try Automation.require(withRule.owner)
+        let ownerChanged = await session.changePermissions(of: user, .owner(from: owner, to: "S-1-5-32-544"), words: "Changed the owner.")
+        let newOwner = try await session.permissions(of: user).owner
+        _ = await session.undo(try Automation.require(session.history.first).id)
+        let ownerUndone = try await session.permissions(of: user).owner
+        let daclAfterOwner = try await dacl()
+        try expect("the owner is changed, the rules left alone, and undone", ownerChanged && newOwner == "S-1-5-32-544"
+                       && ownerUndone == owner && daclAfterOwner == daclBefore)
         // The forest: its domains, a search of all of them, and entries of
         // another domain sent to a connection of their own.
         let domains = await session.forestDomains()

@@ -46,10 +46,11 @@ a month, on a Tuesday, it makes a release (docs/DISTRIBUTION.md, step 5).
 swift test
 ```
 
-This runs 74 unit tests. The 21 tests that need a server are reported as
-*skipped* (step 3), and so are the 5 Kerberos tests, which need the domain
-controller of step 6 and its ticket, and the 4 that time the LDAP client
-against a big directory (step 5, "A big directory"). The unit tests cover:
+This runs 87 unit tests. The 22 tests that need a server are reported as
+*skipped* (step 3), and so are the 9 that need the SASL server (the end of
+step 3), the 7 Kerberos tests and the 5 permission tests, which need the domain
+controller of step 6, and the 4 that time the LDAP client against a big
+directory (step 5, "A big directory"). The unit tests cover:
 
 - **BER encoding**: integers, lengths, partial reads.
 - **Filters**: every example from RFC 4515, plus malformed filters and the error
@@ -63,6 +64,15 @@ against a big directory (step 5, "A big directory"). The unit tests cover:
   keywords, and which attributes a set of classes allows.
 - **Security descriptors**: reading one, and adding and removing the "cannot
   change password" deny entries in the order AD expects.
+- **Changing permissions**: where a new rule goes (denials, then allowances,
+  then inherited rules), and what is refused: changing an inherited rule, a
+  rule that is gone, adding to a list out of order, emptying the list, a rule
+  that applies to nothing or carries the wrong flags, an owner changed by
+  someone else since. Only a descriptor that encodes back to its own bytes is
+  written. The rule editor's drafts and the change in words. And 3,000 random
+  access lists, each given a random change: the inherited rules never move,
+  the list stays in order, and undoing the change gives back the very bytes
+  it started from (`FORESTER_FUZZ` makes it more).
 - **AD metadata**: replication metadata XML and LDAP URLs of dynamic groups.
 - The **attribute formatter**.
 - **Regressions** found by reviewing the code: DNs whose value ends in an
@@ -173,9 +183,9 @@ With the test directory running:
 FORESTER_TEST_SERVER=1 swift test
 ```
 
-95 tests run, in about 6 seconds (the Kerberos tests still wait for step 6,
-and the timing tests for a big directory). The 21 against the server are in two
-suites.
+109 tests run, in about 6 seconds (the SASL tests wait for their own server,
+the Kerberos and permission tests for step 6, and the timing tests for a big
+directory). The 22 against the server are in two suites.
 
 **IntegrationTests** (13) checks reading:
 
@@ -198,12 +208,13 @@ suites.
   - LDAPS sent to the plain port (this one waits out a 5-second timeout)
   - cancelling a search midway
 
-**WriteTests** (8) checks changing, and the newer read paths:
+**WriteTests** (9) checks changing, and the newer read paths:
 
 - add, modify, rename, move and delete, each read back, and deleting a subtree
 - password and binary values written and read back intact
 - a security descriptor survives a round trip through the server, with "cannot
-  change password" set and cleared
+  change password" set and cleared; and a rule added and removed, and the
+  owner changed and back, leave its bytes as they were
 - the schema is read and answers "which attributes may this entry have?"
 - a dynamic group's URL runs as a search
 - `cn=Monitor` is readable
@@ -430,6 +441,18 @@ Then press **⌥⌘E** (or click **Read-only** in the toolbar). It now reads
 | svc_backup › untick **User cannot change password** | Read back from its security descriptor: unticked. Tick it again. |
 | Tick **User must change password at next sign-in** | `pwdLastSet` reads *Must change at next sign-in* (0). |
 | **Reset Password…** (⇧⌘P) | Asks for the password twice, or **Generate**s one. Over StartTLS or LDAPS it is sent; on a plain connection the app refuses. |
+
+**Permissions** (a user's *Permissions* tab; the test directory keeps the
+descriptor but enforces none of it, step 6 does)
+
+| Do | Expect |
+|---|---|
+| Pieter Van Damme › **Add Rule…**: Choose › Authenticated Users, Allow, To *A property or property set*, find and pick `description`, tick Write, **Review…** | The rule in words, *Allow Authenticated Users: Write description, on this object only*, and that only this rule changes. **Add Rule**: it is listed among the rules set here, after the other allowances and before the inherited one. |
+| Edit › **Undo** | The rule is gone again; Change History lists both. |
+| Select the inherited rule (*Pre-Windows 2000 Compatible Access*) | **Change…** and **Remove** are off: it is changed where it is set. |
+| Select *Domain Admins, Full control* › **Change…** › Deny | The review says *Change the rule Allow … to Deny …*. Cancel. |
+| **Change Owner…** › Choose › Administrators › **Review…** › **Change Owner** | The owner reads Administrators. Undo puts it back. |
+| Turn changes off (⌥⌘E) | The buttons give way to a note that the connection is read-only. |
 
 **Import and export**
 
@@ -705,6 +728,28 @@ than one frame, so the request goes out in several. Every seeded account has
 `Corp-Example-Test-Password-2026!`. Each start begins a new domain;
 `TestDirectory/stop-ad.sh` removes it.
 
+Changing permissions is checked against it too:
+
+```bash
+FORESTER_TEST_AD=1 swift test --filter ADPermissionTests
+```
+
+**ADPermissionTests** (5) reads the security descriptor of every object in
+the domain and the configuration partition (over 2,000 each time), as the
+owner alone, the access list alone, owner, group and access list, and all of
+it with the SACL, and each encodes back to exactly the bytes read. Then, on
+objects of their own: a rule letting Pieter Van Damme write a contact's
+description is added, and Pieter, signed in, can; removed, he cannot, and the
+access list is the very bytes it was, with the SACL untouched throughout. A
+denial goes before the allowances and outweighs them, changed into an
+allowance it lets him, and each change undone restores the bytes. The owner
+changes alone (group, access list and SACL keep their bytes), an owner
+changed by someone else since is not overwritten, and changing it back
+restores the descriptor exactly. A rule for descendant contacts set on an OU
+reaches a contact created beneath it as an inherited rule the server obeys,
+cannot be removed there, and removed from the OU is gone from the contact.
+It takes about 30 seconds, most of it reading every descriptor four times.
+
 Then the app drives itself against it, twice:
 
 ```bash
@@ -716,7 +761,7 @@ FORESTER_TEST_AD=1 FORESTER_TEST_PASSWORD='Forester-Lab-Admin-2026!' scripts/aut
 FORESTER_TEST_AD=1 FORESTER_TEST_PASSWORD='Forester-Lab-Admin-2026!' scripts/automation.sh /tmp/forester-ad-ui ui
 ```
 
-**`ad`** (69 checks, `verified (AD): …`) goes through everything Forester does
+**`ad`** (72 checks, `verified (AD): …`) goes through everything Forester does
 to AD, with the functions the app's controls call, and reads every result back.
 Where AD keeps the result to itself, it signs in as the account instead: AD
 answers "must change password" only to the right password, so that proves both.
@@ -736,7 +781,9 @@ any depth, Find by name matching inside a name (`K8S_MINFRA` finds
 delete and tree delete. Then undoing "user cannot change password" (the
 security descriptor comes back) and an account option; a user's permissions
 read and named (its owner, Domain Admins, AD's extended rights and property
-sets) with what the signed-in account may do; the forest's domains, a search
+sets) with what the signed-in account may do; a rule added to them and undone
+from the change history (the access list comes back byte for byte), and the
+owner changed and undone, the rules left alone; the forest's domains, a search
 of the whole forest through the global catalog, an entry of another domain
 not offered unless the forest lists its domain, a domain the forest does not
 list refused, and one it lists opened read-only with the password lent; and, with the ticket from `start-ad.sh`, a connection

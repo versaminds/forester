@@ -133,7 +133,13 @@ password counts and last sign-in are per DC). Per-attribute replication
 metadata, and when each group member was added. **Permissions** in words: the
 owner and every access rule (who, what, on which objects, inherited or set
 here, with extended rights, property sets and attributes named from the
-schema), and what your own account may do there. **Forests:** search every
+schema), and what your own account may do there. With editing on, rules set
+on the object are added, changed and removed, and the owner changed, as
+Advanced Security in Active Directory Users and Computers does it: each change
+is shown in words before it is sent, only the access list or only the owner
+is written (never the audit settings, the SACL), inherited rules are never
+touched, a descriptor Forester could not write back byte for byte is left
+alone, and Edit › Undo takes the change back. **Forests:** search every
 domain through the global catalog, list the forest's domains and open any of
 them. Nested membership in one query
 (`LDAP_MATCHING_RULE_IN_CHAIN`), primary groups, and groups past 1,500 members
@@ -202,8 +208,6 @@ these differences:
 
 - Browsing another domain's tree from the same window: each domain opens as a
   connection of its own.
-- Editing permissions (security descriptors) beyond "user cannot change
-  password"; they are shown, not edited.
 
 ## Testing
 
@@ -296,7 +300,8 @@ Sources/LDAPKit/        the LDAP client
                         ranged attributes, timeouts, cancellation
   Schema.swift          RFC 4512 schema: attribute types, classes, syntaxes
   LDIF.swift, LDIFParser.swift   LDIF out and in, change records included
-  SecurityDescriptor.swift       Windows security descriptors (cannot change password)
+  SecurityDescriptor.swift       Windows security descriptors, written back byte for byte
+  PermissionEditing.swift        access rules and the owner changed, and changed back
   AccessRules.swift     access rules in words, and what an account may do
   Kerberos.swift        Kerberos sign-in: the TLS channel binding, or Kerberos
                         encryption of every message without TLS

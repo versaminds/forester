@@ -6,9 +6,11 @@ import Foundation
 /// A self-relative Windows security descriptor (MS-DTYP §2.4.6), as AD
 /// stores it in nTSecurityDescriptor.
 ///
-/// Needed for one thing an administrator expects to toggle: "User cannot
-/// change password" is not a flag but a pair of deny ACEs in the DACL, which
-/// is also how Active Directory Users and Computers implements the checkbox.
+/// Written back after a change, a broken descriptor can lock everyone out
+/// of an object, so it is encoded exactly as it was read: the parts in the
+/// order they came, and the reserved fields as they were. What changed is
+/// the only difference, and a descriptor that does not encode back to its
+/// own bytes is not changed at all (`checkedForWriting`).
 public struct SecurityDescriptor: Equatable, Sendable {
     public var revision: UInt8 = 1
     public var control: UInt16
@@ -16,10 +18,28 @@ public struct SecurityDescriptor: Equatable, Sendable {
     public var group: String?
     public var sacl: ACL?
     public var dacl: ACL?
+    /// The header's reserved byte (Sbz1), kept as read.
+    var reserved: UInt8 = 0
+    /// The order the parts were laid out in; parts added later follow.
+    var layout: [Part] = Part.defaultOrder
+
+    enum Part: CaseIterable, Sendable {
+        case owner, group, sacl, dacl
+        /// The DACL first, then SACL, owner and group: what AD itself returns.
+        static let defaultOrder: [Part] = [.dacl, .sacl, .owner, .group]
+    }
 
     public struct ACL: Equatable, Sendable {
         public var revision: UInt8
         public var aces: [ACE]
+        /// The reserved fields (Sbz1, Sbz2), kept as read.
+        var reserved1: UInt8 = 0
+        var reserved2: UInt16 = 0
+
+        public init(revision: UInt8, aces: [ACE]) {
+            self.revision = revision
+            self.aces = aces
+        }
     }
 
     public struct ACE: Equatable, Sendable {
@@ -31,12 +51,25 @@ public struct SecurityDescriptor: Equatable, Sendable {
         public var sid: String
         /// ACE types this code does not model are carried through unchanged.
         public var raw: Data?
+        /// Bytes after the SID inside the ACE's size, kept as read.
+        var trailing: [UInt8] = []
 
         public static let accessAllowed: UInt8 = 0x00
         public static let accessDenied: UInt8 = 0x01
         public static let accessAllowedObject: UInt8 = 0x05
         public static let accessDeniedObject: UInt8 = 0x06
         static let inherited: UInt8 = 0x10
+
+        public init(type: UInt8, flags: UInt8, mask: UInt32, objectType: UUID? = nil, inheritedObjectType: UUID? = nil,
+                    sid: String, raw: Data? = nil) {
+            self.type = type
+            self.flags = flags
+            self.mask = mask
+            self.objectType = objectType
+            self.inheritedObjectType = inheritedObjectType
+            self.sid = sid
+            self.raw = raw
+        }
 
         public var isInherited: Bool { flags & Self.inherited != 0 }
         public var isDeny: Bool { type == Self.accessDenied || type == Self.accessDeniedObject }
@@ -47,10 +80,17 @@ public struct SecurityDescriptor: Equatable, Sendable {
     static let daclPresent: UInt16 = 0x0004
     static let saclPresent: UInt16 = 0x0010
 
+    /// The layout is how the bytes were arranged, not what they say.
+    public static func == (a: SecurityDescriptor, b: SecurityDescriptor) -> Bool {
+        a.revision == b.revision && a.control == b.control && a.owner == b.owner && a.group == b.group
+            && a.sacl == b.sacl && a.dacl == b.dacl && a.reserved == b.reserved
+    }
+
     public init(data: Data) throws {
         let b = [UInt8](data)
         guard b.count >= 20 else { throw SecurityDescriptorError.truncated }
         revision = b[0]
+        reserved = b[1]
         control = Self.u16(b, 2)
         let ownerOffset = Int(Self.u32(b, 4)), groupOffset = Int(Self.u32(b, 8))
         let saclOffset = Int(Self.u32(b, 12)), daclOffset = Int(Self.u32(b, 16))
@@ -58,23 +98,60 @@ public struct SecurityDescriptor: Equatable, Sendable {
         group = groupOffset > 0 ? try Self.sid(b, groupOffset).string : nil
         sacl = saclOffset > 0 && control & Self.saclPresent != 0 ? try Self.acl(b, saclOffset) : nil
         dacl = daclOffset > 0 && control & Self.daclPresent != 0 ? try Self.acl(b, daclOffset) : nil
+        var placed: [(Int, Part)] = []
+        if owner != nil { placed.append((ownerOffset, .owner)) }
+        if group != nil { placed.append((groupOffset, .group)) }
+        if sacl != nil { placed.append((saclOffset, .sacl)) }
+        if dacl != nil { placed.append((daclOffset, .dacl)) }
+        layout = placed.sorted { $0.0 < $1.0 }.map(\.1)
     }
 
-    /// Self-relative encoding. The DACL is placed first, then SACL, owner and
-    /// group, which is the layout AD itself returns.
+    /// Self-relative encoding, the parts in the order they were read (the
+    /// DACL, SACL, owner and group for parts that were not there).
     public func encoded() throws -> Data {
         var body: [UInt8] = []
         var offsets = (owner: 0, group: 0, sacl: 0, dacl: 0)
+        // A part that is not there keeps the control bits it was read with:
+        // "DACL present" with no DACL is a null DACL, which differs from none.
         var flags = control | Self.selfRelative
-        if let dacl { offsets.dacl = 20 + body.count; body += try Self.encode(dacl); flags |= Self.daclPresent } else { flags &= ~Self.daclPresent }
-        if let sacl { offsets.sacl = 20 + body.count; body += try Self.encode(sacl); flags |= Self.saclPresent } else { flags &= ~Self.saclPresent }
-        if let owner, let sid = ADValues.sidData(owner) { offsets.owner = 20 + body.count; body += [UInt8](sid) }
-        if let group, let sid = ADValues.sidData(group) { offsets.group = 20 + body.count; body += [UInt8](sid) }
-        var header: [UInt8] = [revision, 0]
+        if dacl != nil { flags |= Self.daclPresent }
+        if sacl != nil { flags |= Self.saclPresent }
+        for part in layout + Part.defaultOrder.filter({ !layout.contains($0) }) {
+            switch part {
+            case .dacl:
+                guard let dacl else { continue }
+                offsets.dacl = 20 + body.count
+                body += try Self.encode(dacl)
+            case .sacl:
+                guard let sacl else { continue }
+                offsets.sacl = 20 + body.count
+                body += try Self.encode(sacl)
+            case .owner:
+                guard let owner else { continue }
+                guard let sid = ADValues.sidData(owner) else { throw SecurityDescriptorError.badSID }
+                offsets.owner = 20 + body.count
+                body += [UInt8](sid)
+            case .group:
+                guard let group else { continue }
+                guard let sid = ADValues.sidData(group) else { throw SecurityDescriptorError.badSID }
+                offsets.group = 20 + body.count
+                body += [UInt8](sid)
+            }
+        }
+        var header: [UInt8] = [revision, reserved]
         header += Self.le16(flags)
         header += Self.le32(UInt32(offsets.owner)) + Self.le32(UInt32(offsets.group))
         header += Self.le32(UInt32(offsets.sacl)) + Self.le32(UInt32(offsets.dacl))
         return Data(header + body)
+    }
+
+    /// The descriptor read from `data`, when it encodes back to exactly
+    /// those bytes. One that does not holds something this code would lose
+    /// or change in writing it back, so it is not written at all.
+    public static func checkedForWriting(_ data: Data) throws -> SecurityDescriptor {
+        let descriptor = try SecurityDescriptor(data: data)
+        guard try descriptor.encoded() == data else { throw SecurityDescriptorError.notExact }
+        return descriptor
     }
 
     // MARK: User cannot change password
@@ -102,7 +179,7 @@ public struct SecurityDescriptor: Equatable, Sendable {
     /// A descriptor without a DACL (everyone may do anything) is refused: the
     /// two entries alone would become the object's whole access list.
     public mutating func setUserCannotChangePassword(_ cannotChange: Bool) throws {
-        guard let dacl else { throw SecurityDescriptorError.noAccessList }
+        guard var dacl else { throw SecurityDescriptorError.noAccessList }
         var aces = dacl.aces
         aces.removeAll(where: Self.isChangePasswordACE)
         let type = cannotChange ? ACE.accessDeniedObject : ACE.accessAllowedObject
@@ -112,8 +189,9 @@ public struct SecurityDescriptor: Equatable, Sendable {
         let explicit = aces.filter { !$0.isInherited }
         let inherited = aces.filter(\.isInherited)
         let denies = explicit.filter(\.isDeny), allows = explicit.filter { !$0.isDeny }
-        let ordered = cannotChange ? new + denies + allows + inherited : denies + new + allows + inherited
-        self.dacl = ACL(revision: max(dacl.revision, 4), aces: ordered)
+        dacl.aces = cannotChange ? new + denies + allows + inherited : denies + new + allows + inherited
+        dacl.revision = max(dacl.revision, 4)
+        self.dacl = dacl
     }
 
     // MARK: Decoding
@@ -142,7 +220,6 @@ public struct SecurityDescriptor: Equatable, Sendable {
 
     private static func acl(_ b: [UInt8], _ offset: Int) throws -> ACL {
         guard offset + 8 <= b.count else { throw SecurityDescriptorError.truncated }
-        let revision = b[offset]
         let count = Int(u16(b, offset + 4))
         var aces: [ACE] = []
         var position = offset + 8
@@ -151,13 +228,16 @@ public struct SecurityDescriptor: Equatable, Sendable {
             let type = b[position], flags = b[position + 1]
             let size = Int(u16(b, position + 2))
             guard size >= 8, position + size <= b.count else { throw SecurityDescriptorError.truncated }
+            let end = position + size
             let mask = u32(b, position + 4)
             switch type {
             case ACE.accessAllowed, ACE.accessDenied, 0x02:
-                aces.append(ACE(type: type, flags: flags, mask: mask, sid: try sid(b, position + 8, end: position + size).string))
+                let sid = try sid(b, position + 8, end: end)
+                var ace = ACE(type: type, flags: flags, mask: mask, sid: sid.string)
+                ace.trailing = Array(b[(position + 8 + sid.length)..<end])
+                aces.append(ace)
             case ACE.accessAllowedObject, ACE.accessDeniedObject, 0x07:
                 // Everything an object ACE holds must lie inside its own size.
-                let end = position + size
                 guard position + 12 <= end else { throw SecurityDescriptorError.truncated }
                 let objectFlags = u32(b, position + 8)
                 var cursor = position + 12
@@ -173,19 +253,24 @@ public struct SecurityDescriptor: Equatable, Sendable {
                     cursor += 16
                 }
                 guard cursor + 8 <= end else { throw SecurityDescriptorError.truncated }
-                aces.append(ACE(type: type, flags: flags, mask: mask, objectType: objectType,
-                                inheritedObjectType: inheritedType, sid: try sid(b, cursor, end: end).string))
+                let sid = try sid(b, cursor, end: end)
+                var ace = ACE(type: type, flags: flags, mask: mask, objectType: objectType, inheritedObjectType: inheritedType, sid: sid.string)
+                ace.trailing = Array(b[(cursor + sid.length)..<end])
+                aces.append(ace)
             default:
-                aces.append(ACE(type: type, flags: flags, mask: mask, sid: "", raw: Data(b[position..<(position + size)])))
+                aces.append(ACE(type: type, flags: flags, mask: mask, sid: "", raw: Data(b[position..<end])))
             }
-            position += size
+            position = end
         }
-        return ACL(revision: revision, aces: aces)
+        var acl = ACL(revision: b[offset], aces: aces)
+        acl.reserved1 = b[offset + 1]
+        acl.reserved2 = u16(b, offset + 6)
+        return acl
     }
 
     // MARK: Encoding
 
-    private static func encode(_ ace: ACE) throws -> [UInt8] {
+    static func encode(_ ace: ACE) throws -> [UInt8] {
         if let raw = ace.raw { return [UInt8](raw) }
         var body = le32(ace.mask)
         if ace.isObjectACE {
@@ -198,7 +283,7 @@ public struct SecurityDescriptor: Equatable, Sendable {
             }
         }
         guard let sid = ADValues.sidData(ace.sid) else { throw SecurityDescriptorError.badSID }
-        body += [UInt8](sid)
+        body += [UInt8](sid) + ace.trailing
         guard 4 + body.count <= Int(UInt16.max) else { throw SecurityDescriptorError.tooLarge }
         return [ace.type, ace.flags] + le16(UInt16(4 + body.count)) + body
     }
@@ -207,7 +292,7 @@ public struct SecurityDescriptor: Equatable, Sendable {
         let aces = try acl.aces.flatMap(encode)
         // An ACL's size is 16 bits; AD's own limit is 64 KB.
         guard 8 + aces.count <= Int(UInt16.max), acl.aces.count <= Int(UInt16.max) else { throw SecurityDescriptorError.tooLarge }
-        return [acl.revision, 0] + le16(UInt16(8 + aces.count)) + le16(UInt16(acl.aces.count)) + [0, 0] + aces
+        return [acl.revision, acl.reserved1] + le16(UInt16(8 + aces.count)) + le16(UInt16(acl.aces.count)) + le16(acl.reserved2) + aces
     }
 }
 
@@ -217,6 +302,8 @@ public enum SecurityDescriptorError: Error, Equatable {
     case noAccessList
     /// The changed access list would be larger than 64 KB.
     case tooLarge
+    /// Encoded again, the descriptor would not be the bytes it was read from.
+    case notExact
 }
 
 extension SecurityDescriptorError: LocalizedError {
@@ -224,8 +311,9 @@ extension SecurityDescriptorError: LocalizedError {
         switch self {
         case .truncated: return "The security descriptor is cut short."
         case .badSID: return "The security descriptor holds a malformed SID."
-        case .noAccessList: return "The account's security descriptor has no access list, so Forester leaves it as it is."
-        case .tooLarge: return "The account's access list would grow past 64 KB, the most a security descriptor can hold."
+        case .noAccessList: return "The security descriptor has no access list, so Forester leaves it as it is."
+        case .tooLarge: return "The access list would grow past 64 KB, the most a security descriptor can hold."
+        case .notExact: return "The security descriptor holds something Forester cannot write back exactly as it was, so Forester leaves it as it is."
         }
     }
 }
