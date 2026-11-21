@@ -25,9 +25,22 @@ without the user meaning to. For example:
 - a password or bind credential written somewhere other than the macOS keychain,
   or included in an export
 - a change sent while a connection is read-only
-- a certificate accepted without the user trusting it, or TLS silently not used
-- a crafted server response that crashes Forester or makes it misbehave
-- an LDIF file that does something other than what the import summary shows
+- a certificate accepted without the user trusting it (the certificate
+  question trusts nothing on Return or Escape), TLS silently not used, or TLS
+  older than 1.2 used
+- a crafted server response that crashes Forester or makes it misbehave,
+  including one answer large enough to fill the Mac's memory (each request's
+  responses are capped at 512 MB) or a photo that is not a JPEG, PNG or GIF
+  of a photo's size reaching an image decoder
+- an LDIF file that does something other than what the import summary shows:
+  a record other than a plain add, or one outside the expected container,
+  not listed with its DN and changes before the import; a change to an
+  administrators' group's members, permissions, account flags, service
+  principal names, delegation or passwords not warned about; or an exported
+  entry that imports again as a change record
+- a name or DN in a confirmation, a picker or the type-to-confirm field that
+  hides characters (bidirectional controls, zero-width or format characters)
+  instead of showing them
 - a saved password sent to a server, port, user or certificate setting other
   than the one it was saved for. By design, and only over TLS to certificates
   this Mac trusts, the password in use also goes to the same domain's global
@@ -36,19 +49,26 @@ without the user meaning to. For example:
   open from it
 - a Kerberos sign-in whose ticket could be relayed to another connection (the
   TLS channel binding), or, without TLS, a message sent or taken on that
-  connection without Kerberos encryption
+  connection without Kerberos encryption and numbering, or a sign-in kept
+  with a server Kerberos names other than `ldap/` and the host connected to
 - a SCRAM sign-in kept without the server's proof that it knows the
-  password, with fewer than 4,096 rounds of hashing, or not bound to the TLS
-  connection when the server offers that; or a password saved for SCRAM
-  sent in a simple bind
+  password, with fewer than 4,096 rounds of hashing, not bound to the TLS
+  connection when the server offers that, or made with "Accept any
+  certificate"; a password saved for SCRAM sent in a simple bind; or a
+  character of the password in an error message or Diagnostics
 - a client certificate shown to a server other than the one it was chosen
-  for, or a certificate sign-in that goes on as something else when it fails
+  for, one the person did not choose shown at all, or a certificate sign-in
+  that goes on as something else when it fails
 - a permissions change that writes more than it says: another part of the
   security descriptor (the SACL above all, or the access list when changing
-  the owner), an inherited rule, or anything in the descriptor besides the
-  change shown in words
-- an update installed that is not signed with VersaMinds' update key, or the
-  update feed read before you chose to check for updates
+  the owner), an inherited rule, a rule's inheritance widened (object
+  inherit turned into container inherit), a list out of Windows' order
+  reordered, or anything in the descriptor besides the change shown in
+  words; a principal shown by a name that is not its own (a RID named as
+  this domain's group in another domain's SID); or a change the server took
+  that is missing from the change history or cannot be undone
+- an update installed, or unpacked, that is not signed with VersaMinds'
+  update key, or the update feed read before you chose to check for updates
 
 ## Supported versions
 

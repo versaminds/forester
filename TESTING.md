@@ -46,11 +46,12 @@ a month, on a Tuesday, it makes a release (docs/DISTRIBUTION.md, step 5).
 swift test
 ```
 
-This runs 87 unit tests. The 22 tests that need a server are reported as
-*skipped* (step 3), and so are the 9 that need the SASL server (the end of
-step 3), the 7 Kerberos tests and the 5 permission tests, which need the domain
-controller of step 6, and the 4 that time the LDAP client against a big
-directory (step 5, "A big directory"). The unit tests cover:
+This runs 111 unit tests. The 23 tests that need a server are reported as
+*skipped* (step 3), and so are the 10 that need the SASL server (the end of
+step 3), the 8 Kerberos tests and the 5 permission tests, which need the domain
+controller of step 6, the 4 that time the LDAP client against a big
+directory (step 5, "A big directory"), and the one that needs servers of an
+old TLS version (the end of step 3). The unit tests cover:
 
 - **BER encoding**: integers, lengths, partial reads.
 - **Filters**: every example from RFC 4515, plus malformed filters and the error
@@ -66,10 +67,15 @@ directory (step 5, "A big directory"). The unit tests cover:
   change password" deny entries in the order AD expects.
 - **Changing permissions**: where a new rule goes (denials, then allowances,
   then inherited rules), and what is refused: changing an inherited rule, a
-  rule that is gone, adding to a list out of order, emptying the list, a rule
-  that applies to nothing or carries the wrong flags, an owner changed by
-  someone else since. Only a descriptor that encodes back to its own bytes is
-  written. The rule editor's drafts and the change in words. And 3,000 random
+  rule that is gone, adding to, removing from or changing a list out of
+  order, emptying the list, a rule that applies to nothing or carries the
+  wrong flags, a rule of a kind Forester does not read (named as one, with
+  its type), an owner changed by someone else since. Only a descriptor that
+  encodes back to its own bytes is written. The rule editor's drafts, which
+  give back every rule's flags as they were (object inherit alone, 0x01,
+  0x05 and 0x09, never gains container inherit), a typed SID kept as it
+  reads back, a RID named only in this domain's SIDs, the read-back after a
+  write judged rather than thrown, and the change in words. And 3,000 random
   access lists, each given a random change: the inherited rules never move,
   the list stays in order, and undoing the change gives back the very bytes
   it started from (`FORESTER_FUZZ` makes it more).
@@ -87,10 +93,30 @@ directory (step 5, "A big directory"). The unit tests cover:
   export; a combining mark cannot hide a comma from DN escaping; a filter nested
   past 64 levels is refused rather than crashing the app; and an access list
   past 64 KB is refused rather than written wrongly.
+- **LDIF hardening**: an exported attribute named `changetype`, `control` or
+  `dn` stays a comment, so the file imports again as the entry; the review
+  before an import lists each record that is not a plain add or lands
+  outside the expected container, with its DN and changes, and warns about
+  administrators' groups' members, permissions, account flags, service
+  principal names, delegation and passwords, without showing a password;
+  the import log keeps a line break in a DN on its record's line, and a new
+  log is numbered beside an earlier one.
+- **Display hardening**: a photo is decoded only as a JPEG, PNG or GIF by
+  its first bytes and to the decoder alike, at the size shown; a BMP, TIFF
+  or HEIC, a TIFF behind a JPEG's first bytes, a value past 10 MB and an
+  8 KB PNG of 64 million pixels are not; bidirectional controls and
+  invisible characters in a name are written out (⟨U+202E⟩) and the name can
+  still be typed to confirm; a value of megabytes is cut short in a cell.
 - **Sign-in**: SCRAM against the examples in RFC 5802 and RFC 7677, and what
   a server's challenge may not ask for (step 3 has the details); the framing
   of Kerberos-encrypted messages, which refuses a frame outside the agreed
-  sizes before Kerberos sees it.
+  sizes before Kerberos sees it. And what a sign-in must not do: name a
+  character of the password in an error (only the field), mix right-to-left
+  and left-to-right text in SASLprep, send a nonce without the system's
+  random numbers, compare the server's proof in time that depends on it,
+  use SCRAM with "Accept any certificate", show a client certificate nobody
+  chose, use TLS older than 1.2, take a Kerberos server named other than
+  `ldap/` and the host, or seal without numbered messages.
 - **Access rules**: an access control entry in words (full control, read,
   extended rights, property sets, attributes and classes named, where it
   applies, inherited or not, denials), in the order AD applies them.
@@ -183,11 +209,11 @@ With the test directory running:
 FORESTER_TEST_SERVER=1 swift test
 ```
 
-109 tests run, in about 6 seconds (the SASL tests wait for their own server,
+134 tests run, in about 7 seconds (the SASL tests wait for their own server,
 the Kerberos and permission tests for step 6, and the timing tests for a big
-directory). The 22 against the server are in two suites.
+directory). The 23 against the server are in two suites.
 
-**IntegrationTests** (13) checks reading:
+**IntegrationTests** (14) checks reading:
 
 - **Root DSE and binds**: reading the root DSE, a simple bind, and "Who am I?".
 - **Bind errors**: a wrong password is reported as *invalid credentials*, and an
@@ -196,6 +222,8 @@ directory). The 22 against the server are in two suites.
   - an unpaged search stops at the server's limit of 500
   - a paged search returns all 1,500 entries
   - a search stopped at a limit leaves the connection usable
+  - a request whose answer passes its byte limit (64 KB in the test, 512 MB
+    in the app) fails as it arrives, and pages under it come through
 - **Pipelining**: four searches sent at once each get their own answer.
 - **Binary values**: searching by binary SID.
 - **TLS**: for both StartTLS and LDAPS, an untrusted certificate is reported with
@@ -250,7 +278,7 @@ asks every TLS client for a certificate, and binds SCRAM to the TLS
 connection (SCRAM-SHA-256-PLUS). The script makes a test CA, the server's
 certificate and two client certificates as `.p12` files in
 `TestDirectory/.run/sasl/` (password `forester`); the tests read them into
-memory, so nothing is added to a keychain. **SASLServerTests** (9) checks:
+memory, so nothing is added to a keychain. **SASLServerTests** (10) checks:
 
 - SCRAM-SHA-256 signs in over StartTLS and LDAPS, bound to the TLS
   connection, and over plain LDAP; a password typed with accents in another
@@ -265,6 +293,8 @@ memory, so nothing is added to a keychain. **SASLServerTests** (9) checks:
   `FORESTER_TEST_SERVER=1`) and one that asks but cannot sign in with it (the
   domain controller of step 6, with `FORESTER_TEST_AD=1`) are each named as
   such
+- with no certificate chosen, this server, which asks for one, gets none:
+  the handshake goes on, and it has nothing to sign in as
 
 **SCRAMTests**, among the unit tests, checks the arithmetic against the
 examples in RFC 5802 and RFC 7677, the channel-binding headers, escaped user
@@ -278,6 +308,26 @@ login keychain, connect to `localhost` port 12636 (LDAPS), Sign in
 (SCRAM)** as `scram.user` with `Scram-Test-Password-2026!`. Trust the test
 CA's certificate when asked. Remove the certificate from the keychain
 afterwards. `TestDirectory/stop-sasl.sh` removes the server and its files.
+
+### TLS older than 1.2
+
+Forester connects with TLS 1.2 or newer only. To see an older server
+refused, start two throwaway TLS servers with Homebrew's Python, one that
+speaks only TLS 1.1 and one only TLS 1.2, each answering the first search
+with an empty success (with a self-signed certificate: the test accepts any):
+
+```bash
+python3 TestDirectory/old_tls_server.py 14611 1.1 & python3 TestDirectory/old_tls_server.py 14612 1.2 &
+```
+
+```bash
+FORESTER_TEST_TLS11_PORT=14611 FORESTER_TEST_TLS12_PORT=14612 swift test --filter tlsOlderThan12IsRefused
+```
+
+The 1.1 server gets no connection, the 1.2 one does. Recent macOS refuses
+TLS 1.1 to such a stream by itself; the floor is set for the older versions
+Forester runs on, and the unit tests check it is. Stop the two servers with
+`kill %1 %2` in the same shell.
 
 ## 4. The app against the test directory
 
@@ -718,7 +768,10 @@ FORESTER_TEST_AD=1 KRB5_CONFIG=$PWD/TestDirectory/.run/krb5.conf KRB5CCNAME=FILE
 They sign in with the ticket over StartTLS and LDAPS, are refused with any
 certificate accepted, and are refused with a channel binding for another
 certificate (Samba checks it, as a Windows domain controller with channel
-binding required does). Over plain LDAP on 11389 they sign in with Kerberos
+binding required does). Over plain LDAP on 11389 they sign in only to a
+server Kerberos names `ldap/localhost`, the host connected to (asked for
+that name while connecting to 127.0.0.1, as DNS could make it, the sign-in
+is refused), with every message numbered and Kerberos
 encrypting every message: what crosses the network holds none of the names
 read (the 1,500 entries of *Bulk Import*, paged, arrive in many encrypted
 frames), 300 reads in flight at once and a search abandoned midway leave the

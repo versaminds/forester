@@ -375,7 +375,8 @@ struct ADPermissionTests {
             draft.mask = 0x20
             draft.objectType = Self.description
             let rule = try draft.ace()
-            try await connection.changePermissions(of: dn, .add(rule))
+            // Taken and read back as sent.
+            #expect(try await connection.changePermissions(of: dn, .add(rule)) == .kept)
             let added = try SecurityDescriptor(data: try await Self.descriptor(connection, dn, flags: SecurityDescriptor.daclPart))
             #expect(added.dacl?.aces.contains(rule) == true)
             #expect(try await Self.pieterMayWriteDescription(dn))

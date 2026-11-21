@@ -154,7 +154,10 @@ every domain through the global catalog.
 
 **Import and export.** LDIF import of entries and change records (add, modify,
 rename, delete) with continue-on-error, "skip or update existing entries",
-progress, a per-record log and an optional log file. LDIF export of an entry,
+progress, a per-record log and an optional log file. Before anything is sent,
+every record other than a plain add, or outside the container you expect,
+is listed with its DN and what it changes, with a warning for administrators'
+groups, permissions, account flags, delegation and passwords. LDIF export of an entry,
 its children or a whole subtree, and CSV or LDIF export of search results.
 
 **Server.** Server information from the root DSE (controls and extensions by
