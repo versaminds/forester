@@ -11,6 +11,15 @@
     <language>en</language>
     <!-- Releases, newest first -->
     <item>
+      <title>Forester 1.2.0</title>
+      <pubDate>Sat, 21 Nov 2026 23:28:26 +0000</pubDate>
+      <sparkle:version>20261121.2326</sparkle:version>
+      <sparkle:shortVersionString>1.2.0</sparkle:shortVersionString>
+      <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+      <sparkle:releaseNotesLink>https://github.com/versaminds/forester/releases/tag/v1.2.0</sparkle:releaseNotesLink>
+      <enclosure url="https://github.com/versaminds/forester/releases/download/v1.2.0/Forester.dmg" sparkle:edSignature="4XqdWCP/SgVZxRbY7GXeeM33EMokQRPOcVNSPIZ+9iHe8XCydMcBhB0CCIjyK29mMs2aHJOIundgcr5usTf5Cw==" length="9020710" type="application/octet-stream"/>
+    </item>
+    <item>
       <title>Forester 1.1.1</title>
       <pubDate>Fri, 20 Nov 2026 16:26:32 +0000</pubDate>
       <sparkle:version>20261120.1624</sparkle:version>
