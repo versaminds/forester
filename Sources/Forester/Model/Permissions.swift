@@ -65,7 +65,7 @@ extension DirectorySession {
         for sid in sids {
             if let cached = sidNames[sid] {
                 result[sid] = cached
-            } else if let name = ADValues.wellKnownName(sid), !sid.hasPrefix("S-1-5-21-") {
+            } else if let name = ADValues.wellKnownName(sid, inDomain: nil) {
                 result[sid] = (name, nil)
             } else {
                 unknown.append(sid)
@@ -84,8 +84,9 @@ extension DirectorySession {
                 result[sid] = (name, entry.dn)
             }
         }
+        // Not found here: a RID is this domain's group only in this domain's SIDs.
         for sid in unknown where result[sid] == nil {
-            result[sid] = (ADValues.wellKnownName(sid) ?? sid, nil)
+            result[sid] = (ADValues.wellKnownName(sid, inDomain: domainSID) ?? sid, nil)
         }
         for (sid, value) in result { sidNames[sid] = value }
         return result
@@ -116,16 +117,49 @@ extension DirectorySession {
     /// `LDAPConnection.changePermissions`), recorded with its opposite: Undo
     /// applies that to the permissions as they are then, so a rule someone
     /// else added meanwhile stays, and a rule that is gone is reported.
+    ///
+    /// Once the server took the change it is recorded, with its undo, even
+    /// when reading it back fails or finds something else: the write
+    /// happened, so the change history must show it and be able to take it
+    /// back. The doubt is a warning on the record, and in the window.
     @discardableResult
     func changePermissions(of dn: String, _ change: PermissionChange, words: String) async -> Bool {
-        await self.change(words, undo: .inverse(dn: dn) { try await $0.changePermissions(of: dn, change.inverse) }) {
-            try await $0.changePermissions(of: dn, change)
+        await collectingWarning(summary: words, dn: dn) {
+            await self.change(words, undo: .inverse(dn: dn) { try await Self.write(change.inverse, to: dn, on: $0) }) {
+                try await Self.write(change, to: dn, on: $0)
+            }
         }
+    }
+
+    private static func write(_ change: PermissionChange, to dn: String, on connection: LDAPConnection) async throws {
+        if let warning = try await connection.changePermissions(of: dn, change).warning { ChangeWarning.note(warning) }
     }
 
     /// The SID of a user, group or computer, for an access rule or an owner.
     func sid(of dn: String) async throws -> String? {
         try await run { try await $0.read(dn, attributes: ["objectSid"]) }?.values("objectSid").first.flatMap(ADValues.sidString)
+    }
+}
+
+/// Who a SID is, as the permission sheets name it: a name, and the entry
+/// it was found as or picked from, if any.
+struct PrincipalLabel: Equatable {
+    var name: String
+    var dn: String?
+
+    /// The name shown for `sid`: the label's, else a well-known name (a RID
+    /// only in this domain), else the SID itself, hidden characters written out.
+    static func name(_ sid: String, _ label: PrincipalLabel?, domainSID: String?) -> String {
+        VisibleText.reveal(label?.name ?? ADValues.wellKnownName(sid, inDomain: domainSID) ?? sid)
+    }
+
+    /// For a change shown before it is sent: the name with the DN, which
+    /// tells two groups of one name apart, or with the SID when no entry is
+    /// known for it, so a name that only looks right can be checked.
+    static func reviewed(_ sid: String, _ label: PrincipalLabel?, domainSID: String?) -> String {
+        let shown = name(sid, label, domainSID: domainSID)
+        if let dn = label?.dn { return "\(shown) (\(VisibleText.reveal(dn)))" }
+        return shown == sid ? sid : "\(shown) (\(sid))"
     }
 }
 

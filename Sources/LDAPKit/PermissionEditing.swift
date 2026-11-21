@@ -40,14 +40,17 @@ public enum PermissionChange: Equatable, Sendable {
     /// `who` names a SID; `names` names a schema GUID (lowercase).
     public func words(who: (String) -> String, names: (String) -> SchemaGUIDName?) -> String {
         func rule(_ ace: SecurityDescriptor.ACE) -> String {
+            // Neither allow nor deny, and for no one this code can name.
+            if ace.raw != nil { return String(format: "a rule of a kind Forester does not read (type 0x%02X)", ace.type) }
             let described = AccessRules.describe(ace, names: names)
             let scope = described.appliesTo.prefix(1).lowercased() + described.appliesTo.dropFirst()
             return "\(ace.isDeny ? "Deny" : "Allow") \(who(ace.sid)): \(described.access.joined(separator: "; ")), on \(scope)"
         }
+        func the(_ ace: SecurityDescriptor.ACE) -> String { ace.raw == nil ? "the rule \(rule(ace))" : rule(ace) }
         switch self {
-        case .add(let ace, _): return "Add the rule \(rule(ace))."
-        case .remove(let ace, _): return "Remove the rule \(rule(ace))."
-        case .replace(let old, let new, _): return "Change the rule \(rule(old)), to \(rule(new))."
+        case .add(let ace, _): return "Add \(the(ace))."
+        case .remove(let ace, _): return "Remove \(the(ace))."
+        case .replace(let old, let new, _): return "Change \(the(old)), to \(rule(new))."
         case .owner(let from, let to): return "Change the owner from \(who(from)) to \(who(to))."
         }
     }
@@ -78,24 +81,34 @@ extension SecurityDescriptor {
             self.dacl = dacl
         case .remove(let ace, let index):
             guard var dacl else { throw SecurityDescriptorError.noAccessList }
+            try Self.checkChangeable(ace, in: dacl.aces)
             dacl.aces.remove(at: try Self.find(ace, at: index, in: dacl.aces))
             guard !dacl.aces.isEmpty else { throw PermissionEditError.emptyAccessList }
             self.dacl = dacl
         case .replace(let old, let new, let index):
             try new.checkExplicit()
             guard var dacl else { throw SecurityDescriptorError.noAccessList }
+            try Self.checkChangeable(old, in: dacl.aces)
             let found = try Self.find(old, at: index, in: dacl.aces)
-            let wasCanonical = (try? Self.checkCanonical(dacl.aces)) != nil
             dacl.aces.remove(at: found)
-            if !wasCanonical, old.isDeny == new.isDeny {
-                // Out of order already: changed where it stands, nothing moves.
-                dacl.aces.insert(new, at: found)
-            } else {
-                try Self.insert(new, at: index ?? found, into: &dacl.aces)
-            }
+            try Self.insert(new, at: index ?? found, into: &dacl.aces)
             dacl.revision = max(dacl.revision, Self.revision(for: dacl.aces))
             self.dacl = dacl
         }
+    }
+
+    /// A rule is removed or changed only in a list in the order Windows
+    /// applies. In another order, where a rule stands decides what it does,
+    /// and putting it back (Undo) could not be sure to put it where it was
+    /// once anyone else changed the list: a denial could end up ahead of an
+    /// allowance it stood behind. A rule of a kind this code does not read
+    /// is left as it is: what removing it would allow is unknown.
+    private static func checkChangeable(_ ace: ACE, in aces: [ACE]) throws {
+        guard ace.raw == nil else {
+            throw PermissionEditError.invalidRule("Forester does not read this kind of rule, so it neither removes nor changes it. Active Directory Users and Computers can.")
+        }
+        guard !ace.isInherited else { throw PermissionEditError.inherited }
+        try checkCanonical(aces)
     }
 
     /// The rule set here equal to `ace`: at `index` if it is there, else the
@@ -107,26 +120,24 @@ extension SecurityDescriptor {
         return last
     }
 
-    /// At `index` when that keeps the order, or puts a rule back where it was
-    /// in a list already out of order; otherwise after the last rule of its
-    /// kind set here, which needs a list in order to say where that is.
+    /// At `index` when that keeps the order; otherwise after the last rule
+    /// of its kind set here, which needs a list in order to say where that is.
     private static func insert(_ ace: ACE, at index: Int?, into aces: inout [ACE]) throws {
-        let wasCanonical = (try? checkCanonical(aces)) != nil
+        try checkCanonical(aces)
         if let index, (0...aces.count).contains(index) {
             var candidate = aces
             candidate.insert(ace, at: index)
-            if !wasCanonical || (try? checkCanonical(candidate)) != nil {
+            if (try? checkCanonical(candidate)) != nil {
                 aces = candidate
                 return
             }
         }
-        guard wasCanonical else { throw PermissionEditError.notCanonical }
         aces.insert(ace, at: place(for: ace, in: aces))
     }
 
     /// Explicit denials before explicit allowances before inherited rules,
     /// the order Windows evaluates and writes them in. A list in another
-    /// order is not added to: where a new rule belongs is then a guess.
+    /// order is not changed: where a rule belongs is then a guess.
     static func checkCanonical(_ aces: [ACE]) throws {
         var stage = 0
         for ace in aces {
@@ -206,6 +217,12 @@ public struct AccessRuleDraft: Equatable, Sendable {
     /// Object inherit, which AD itself does not use but a rule may carry:
     /// kept when a rule is changed.
     var objectInherit = false
+    /// The flags of a rule without container inherit, which the scope
+    /// choices do not show (object inherit with or without inherit only or
+    /// no propagation): kept as they are while its scope stays "this
+    /// object". Read as "this object" alone, 0x01 would be rebuilt as 0x03,
+    /// reaching every descendant.
+    var ownFlags: UInt8 = 0
 
     public init() {}
 
@@ -218,17 +235,21 @@ public struct AccessRuleDraft: Equatable, Sendable {
         mask = ace.mask
         objectType = ace.objectType
         inheritedObjectType = ace.inheritedObjectType
-        let inherits = ace.flags & 0x03 != 0
-        scope = !inherits ? .thisObject : (ace.flags & 0x08 != 0 ? .descendants : .thisAndDescendants)
-        oneLevelOnly = ace.flags & 0x04 != 0
+        // Container inherit is what reaches descendant directory objects.
+        let containerInherit = ace.flags & 0x02 != 0
+        scope = !containerInherit ? .thisObject : (ace.flags & 0x08 != 0 ? .descendants : .thisAndDescendants)
+        oneLevelOnly = containerInherit && ace.flags & 0x04 != 0
         objectInherit = ace.flags & 0x01 != 0
+        ownFlags = containerInherit ? 0 : ace.flags & Self.inheritanceFlags
     }
+
+    static let inheritanceFlags: UInt8 = 0x0F
 
     /// The access control entry, checked as one Forester may set.
     public func ace() throws -> SecurityDescriptor.ACE {
         var flags: UInt8 = 0
         switch scope {
-        case .thisObject: break
+        case .thisObject: flags = ownFlags
         case .thisAndDescendants: flags = 0x02
         case .descendants: flags = 0x0A
         }
@@ -236,12 +257,13 @@ public struct AccessRuleDraft: Equatable, Sendable {
             if oneLevelOnly { flags |= 0x04 }
             if objectInherit { flags |= 0x01 }
         }
-        let classOnly = scope == .thisObject ? nil : inheritedObjectType
+        // A class of descendants needs something that inherits.
+        let classOnly = flags & 0x03 == 0 ? nil : inheritedObjectType
         let isObject = objectType != nil || classOnly != nil
         let type = allow ? (isObject ? SecurityDescriptor.ACE.accessAllowedObject : SecurityDescriptor.ACE.accessAllowed)
                          : (isObject ? SecurityDescriptor.ACE.accessDeniedObject : SecurityDescriptor.ACE.accessDenied)
         let ace = SecurityDescriptor.ACE(type: type, flags: flags, mask: mask, objectType: objectType,
-                                         inheritedObjectType: classOnly, sid: sid)
+                                         inheritedObjectType: classOnly, sid: ADValues.canonicalSID(sid) ?? sid)
         try ace.checkExplicit()
         return ace
     }
@@ -268,7 +290,7 @@ public enum PermissionEditError: Error, Equatable, LocalizedError {
         case .notFound:
             return "That rule is no longer set on the object: someone changed its permissions since. Look again before changing them."
         case .notCanonical:
-            return "The object's rules are not in the order Windows applies them (denials, then allowances, then inherited rules), so Forester does not add to them: where a new rule belongs would be a guess. Active Directory Users and Computers can put them in order."
+            return "The object's rules are not in the order Windows applies them (denials, then allowances, then inherited rules), so Forester does not change them: in that order, where a rule stands decides what it does, and where one belongs would be a guess. Active Directory Users and Computers can put them in order."
         case .emptyAccessList:
             return "That would leave the object with no rules at all, which denies everyone everything; Forester does not do that."
         case .ownerChangedSince:
@@ -278,7 +300,7 @@ public enum PermissionEditError: Error, Equatable, LocalizedError {
         case .invalidRule(let why):
             return why
         case .storedDifferently:
-            return "The server kept permissions other than the ones sent. Look at them again before changing anything else."
+            return "The change was made, but the server kept permissions other than the ones sent. Look at them again before changing anything else."
         }
     }
 }
@@ -290,7 +312,12 @@ extension LDAPConnection {
     /// The descriptor is changed only if it encodes back to the bytes read,
     /// and only in the rules set on the object; afterwards it is read again
     /// to check the server kept what was sent.
-    public func changePermissions(of dn: String, _ change: PermissionChange) async throws {
+    ///
+    /// Once the server has taken the change, it is made, whatever the read
+    /// afterwards finds: that is returned rather than thrown, so the change
+    /// is still recorded, and can be undone, with the doubt as a warning.
+    @discardableResult
+    public func changePermissions(of dn: String, _ change: PermissionChange) async throws -> PermissionWriteCheck {
         let control = LDAPControl.sdFlags(change.sdFlags)
         guard let data = try await read(dn, attributes: ["nTSecurityDescriptor"], controls: [control])?
             .values("nTSecurityDescriptor").first else { throw PermissionEditError.notReadable }
@@ -307,11 +334,40 @@ extension LDAPConnection {
             throw SecurityDescriptorError.notExact
         }
         try await modify(dn, [LDAPModification(.replace, "nTSecurityDescriptor", [encoded])], controls: [control])
-        guard let stored = try await read(dn, attributes: ["nTSecurityDescriptor"], controls: [control])?
-            .values("nTSecurityDescriptor").first.flatMap({ try? SecurityDescriptor(data: $0) }) else { throw PermissionEditError.storedDifferently }
+        let stored = try? await read(dn, attributes: ["nTSecurityDescriptor"], controls: [control])?.values("nTSecurityDescriptor").first
+        return PermissionWriteCheck(stored: stored, sent: after, change: change)
+    }
+}
+
+/// What reading the permissions back after a change found.
+public enum PermissionWriteCheck: Equatable, Sendable {
+    /// The server kept what was sent.
+    case kept
+    /// They could not be read back, so whether the server kept them is not known.
+    case notReadBack
+    /// The server kept something other than what was sent.
+    case storedDifferently
+
+    /// `stored`: the descriptor read back, if any. Only the part changed is
+    /// compared, and of the access list only the rules set on the object:
+    /// the server works out the inherited ones itself.
+    public init(stored: Data?, sent: SecurityDescriptor, change: PermissionChange) {
+        guard let stored, let descriptor = try? SecurityDescriptor(data: stored) else {
+            self = .notReadBack
+            return
+        }
         let kept = change.sdFlags == SecurityDescriptor.ownerPart
-            ? stored.owner == after.owner
-            : stored.dacl?.aces.filter { !$0.isInherited } == after.dacl?.aces.filter { !$0.isInherited }
-        guard kept else { throw PermissionEditError.storedDifferently }
+            ? descriptor.owner == sent.owner
+            : descriptor.dacl?.aces.filter { !$0.isInherited } == sent.dacl?.aces.filter { !$0.isInherited }
+        self = kept ? .kept : .storedDifferently
+    }
+
+    /// For the change history and the window: the change was made either way.
+    public var warning: String? {
+        switch self {
+        case .kept: return nil
+        case .notReadBack: return "The change was made, but the permissions could not be read back to check what the server kept. Look at them again before changing anything else."
+        case .storedDifferently: return PermissionEditError.storedDifferently.errorDescription
+        }
     }
 }

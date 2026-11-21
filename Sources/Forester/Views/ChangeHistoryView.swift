@@ -49,6 +49,10 @@ struct ChangeHistorySheet: View {
                 Text(record.dn.isEmpty ? "—" : DN.displayName(record.dn) + " · " + record.date.formatted(date: .omitted, time: .shortened))
                     .font(.caption).foregroundStyle(.secondary).lineLimit(1).truncationMode(.middle)
                     .help(record.dn)
+                if let warning = record.warning {
+                    Label(warning, systemImage: "exclamationmark.triangle.fill")
+                        .font(.caption).foregroundStyle(.orange).fixedSize(horizontal: false, vertical: true)
+                }
                 if let why = record.notUndoable {
                     Text(why).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                 } else if record.undone {

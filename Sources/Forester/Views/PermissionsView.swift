@@ -15,7 +15,7 @@ struct PermissionsView: View {
     @State private var permissions: Permissions?
     @State private var names: [String: (name: String, dn: String?)] = [:]
     /// Names for the editor, with whoever it is given.
-    @State private var labels: [String: String] = [:]
+    @State private var labels: [String: PrincipalLabel] = [:]
     @State private var guidNames: [String: SchemaGUIDName] = [:]
     @State private var loading = true
     @State private var error: String?
@@ -24,7 +24,15 @@ struct PermissionsView: View {
     @State private var onlyChanges = false
     @State private var selection: Set<AccessRule.ID> = []
     @State private var editing: Editing?
-    @State private var removing: AccessRule?
+    /// The rule to remove, as it was when Remove was clicked: the table may
+    /// load again before the question is answered, and a place in it could
+    /// then name another rule.
+    @State private var removing: Removal?
+
+    struct Removal {
+        let change: PermissionChange
+        let words: String
+    }
 
     enum Editing: Identifiable {
         case add
@@ -60,7 +68,7 @@ struct PermissionsView: View {
         }
     }
 
-    private func name(_ sid: String) -> String { names[sid]?.name ?? sid }
+    private func name(_ sid: String) -> String { VisibleText.reveal(names[sid]?.name ?? sid) }
 
     var body: some View {
         Group {
@@ -113,24 +121,29 @@ struct PermissionsView: View {
         }
         .alert("Remove this rule?", isPresented: Binding(get: { removing != nil }, set: { if !$0 { removing = nil } })) {
             Button("Remove Rule", role: .destructive) {
-                guard let rule = removing, let change = removal(rule) else { return }
-                Task { await session.changePermissions(of: entry.dn, change, words: words(change)) }
+                guard let removal = removing else { return }
+                Task { await session.changePermissions(of: entry.dn, removal.change, words: removal.words) }
             }
             Button("Cancel", role: .cancel) {}
         } message: {
-            if let rule = removing, let change = removal(rule) {
-                Text(words(change) + " The other rules stay as they are. Edit › Undo takes it back.")
+            if let removal = removing {
+                Text(removal.words + " The other rules stay as they are. Edit › Undo takes it back.")
             }
         }
     }
 
-    private func removal(_ rule: AccessRule) -> PermissionChange? {
-        guard let aces = permissions?.aces, aces.indices.contains(rule.id) else { return nil }
-        return .remove(aces[rule.id], at: rule.id)
+    /// The rule itself and its place, taken when Remove is clicked. Sent
+    /// later, the rule is found by what it is; its place only tells two
+    /// equal rules apart.
+    private func removal(_ rule: AccessRule, in permissions: Permissions) -> Removal? {
+        guard permissions.aces.indices.contains(rule.id), rule.understood else { return nil }
+        let change = PermissionChange.remove(permissions.aces[rule.id], at: rule.id)
+        return Removal(change: change, words: words(change))
     }
 
     private func words(_ change: PermissionChange) -> String {
-        change.words(who: { labels[$0] ?? name($0) }, names: { guidNames[$0] ?? SchemaGUIDName.builtIn[$0] })
+        change.words(who: { PrincipalLabel.reviewed($0, labels[$0], domainSID: session.domainSID) },
+                     names: { guidNames[$0] ?? SchemaGUIDName.builtIn[$0] })
     }
 
     /// Add, change and remove the rules set here, and change the owner.
@@ -156,9 +169,11 @@ struct PermissionsView: View {
             }
             .disabled(!mayChangeRules || chosen.map { $0.inherited || AccessRuleDraft(permissions.aces[$0.id]) == nil } ?? true)
             .help(chosen?.inherited == true ? "Inherited from a container above: change it there." : "Change the chosen rule")
-            Button("Remove") { removing = chosen }
-                .disabled(!mayChangeRules || chosen.map(\.inherited) ?? true)
-                .help(chosen?.inherited == true ? "Inherited from a container above: remove it there." : "Remove the chosen rule")
+            Button("Remove") { removing = chosen.flatMap { removal($0, in: permissions) } }
+                .disabled(!mayChangeRules || chosen.map { $0.inherited || !$0.understood } ?? true)
+                .help(chosen?.inherited == true ? "Inherited from a container above: remove it there."
+                      : chosen?.understood == false ? "Forester does not read this kind of rule, so it does not remove it."
+                      : "Remove the chosen rule")
             Spacer()
             Button("Change Owner…") { if let owner = permissions.owner { editing = .owner(owner) } }
                 .disabled(!mayChangeOwner)
@@ -271,7 +286,7 @@ struct PermissionsView: View {
             // Another entry chosen meanwhile has its own load running.
             guard !Task.isCancelled else { return }
             names = resolved
-            labels.merge(resolved.mapValues(\.name)) { _, new in new }
+            labels.merge(resolved.mapValues { PrincipalLabel(name: $0.name, dn: $0.dn) }) { _, new in new }
             guidNames = schemaNames
             permissions = found
             selection = []

@@ -10,7 +10,7 @@ struct PrincipalField: View {
     let session: DirectorySession
     @Binding var sid: String
     /// Names known for SIDs, extended with whoever is chosen here.
-    @Binding var names: [String: String]
+    @Binding var names: [String: PrincipalLabel]
     @State private var picking = false
     @State private var typing = false
     @State private var typed = ""
@@ -31,16 +31,26 @@ struct PrincipalField: View {
     var body: some View {
         FieldRow(label: "Who") {
             HStack {
-                Text(sid.isEmpty ? "No one chosen" : names[sid] ?? ADValues.wellKnownName(sid) ?? sid)
-                    .foregroundStyle(sid.isEmpty ? .secondary : .primary)
-                    .lineLimit(1).truncationMode(.middle)
-                    .help(sid)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(sid.isEmpty ? "No one chosen" : PrincipalLabel.name(sid, names[sid], domainSID: session.domainSID))
+                        .foregroundStyle(sid.isEmpty ? .secondary : .primary)
+                        .lineLimit(1).truncationMode(.middle)
+                    // The DN tells two groups of one name apart; the SID is
+                    // what a name typed or well known stands for.
+                    if !sid.isEmpty {
+                        Text(VisibleText.reveal(names[sid]?.dn ?? sid))
+                            .font(.caption).foregroundStyle(.secondary)
+                            .lineLimit(1).truncationMode(.middle)
+                            .textSelection(.enabled)
+                    }
+                }
+                .help(sid)
                 Spacer()
                 Menu("Choose") {
                     Button("From the Directory…") { picking = true }
                     Divider()
                     ForEach(wellKnown, id: \.1) { name, value in
-                        Button(name) { choose(value, name: name) }
+                        Button(name) { choose(value, label: PrincipalLabel(name: name)) }
                     }
                     Divider()
                     Button("By SID…") { typed = sid; typing = true }
@@ -54,10 +64,10 @@ struct PrincipalField: View {
                 Task {
                     do {
                         guard let found = try await session.sid(of: dn) else {
-                            problem = "\(DN.displayName(dn)) has no SID: only users, groups, computers and other security principals can be given permissions."
+                            problem = "\(VisibleText.reveal(DN.displayName(dn))) has no SID: only users, groups, computers and other security principals can be given permissions."
                             return
                         }
-                        choose(found, name: DN.displayName(dn))
+                        choose(found, label: PrincipalLabel(name: DN.displayName(dn), dn: dn))
                     } catch {
                         problem = error.localizedDescription
                     }
@@ -70,7 +80,7 @@ struct PrincipalField: View {
                     TextField("SID", text: $typed, prompt: Text("S-1-5-21-…"))
                         .labelsHidden().textFieldStyle(.roundedBorder).autocorrectionDisabled()
                         .onSubmit(useTyped)
-                    Button("Use", action: useTyped).disabled(ADValues.sidData(typed.trimmingCharacters(in: .whitespaces)) == nil)
+                    Button("Use", action: useTyped).disabled(ADValues.canonicalSID(typed) == nil)
                 }
             }
         }
@@ -79,17 +89,22 @@ struct PrincipalField: View {
         }
     }
 
-    private func choose(_ value: String, name: String) {
+    /// A pick from the directory names the entry it was picked as, so the
+    /// review shows its DN, even for a SID known under another name.
+    private func choose(_ value: String, label: PrincipalLabel?) {
         sid = value
-        names[value] = names[value] ?? name
+        if let label, label.dn != nil || names[value] == nil { names[value] = label }
         problem = nil
         typing = false
     }
 
+    /// Kept as the SID reads back from its bytes, so it compares equal to the
+    /// same SID read from the directory. Named only if it is one of this
+    /// domain's well-known groups (or a SID that is the same everywhere);
+    /// anything else is shown as the SID it is.
     private func useTyped() {
-        let value = typed.trimmingCharacters(in: .whitespaces).uppercased()
-        guard ADValues.sidData(value) != nil else { return }
-        choose(value, name: ADValues.wellKnownName(value) ?? value)
+        guard let value = ADValues.canonicalSID(typed) else { return }
+        choose(value, label: ADValues.wellKnownName(value, inDomain: session.domainSID).map { PrincipalLabel(name: $0) })
     }
 }
 
@@ -102,7 +117,7 @@ struct PermissionRuleSheet: View {
     /// The rule being changed and its place in the access list; nil to add one.
     let original: (ace: SecurityDescriptor.ACE, index: Int)?
     let guidNames: [String: SchemaGUIDName]
-    @Binding var names: [String: String]
+    @Binding var names: [String: PrincipalLabel]
     let done: () -> Void
     @Environment(\.dismiss) private var dismiss
     @State private var draft = AccessRuleDraft()
@@ -116,7 +131,7 @@ struct PermissionRuleSheet: View {
     @State private var kept: UInt32 = 0
 
     init(session: DirectorySession, dn: String, original: (ace: SecurityDescriptor.ACE, index: Int)?,
-         guidNames: [String: SchemaGUIDName], names: Binding<[String: String]>, done: @escaping () -> Void) {
+         guidNames: [String: SchemaGUIDName], names: Binding<[String: PrincipalLabel]>, done: @escaping () -> Void) {
         self.session = session
         self.dn = dn
         self.original = original
@@ -216,7 +231,7 @@ struct PermissionRuleSheet: View {
     }
 
     private func words(_ change: PermissionChange) -> String {
-        change.words(who: { names[$0] ?? ADValues.wellKnownName($0) ?? $0 }, names: { guidNames[$0] ?? SchemaGUIDName.builtIn[$0] })
+        change.words(who: { PrincipalLabel.reviewed($0, names[$0], domainSID: session.domainSID) }, names: { guidNames[$0] ?? SchemaGUIDName.builtIn[$0] })
     }
 
     var body: some View {
@@ -382,7 +397,7 @@ struct OwnerSheet: View {
     let session: DirectorySession
     let dn: String
     let owner: String
-    @Binding var names: [String: String]
+    @Binding var names: [String: PrincipalLabel]
     let done: () -> Void
     @Environment(\.dismiss) private var dismiss
     @State private var sid = ""
@@ -392,7 +407,7 @@ struct OwnerSheet: View {
 
     private var change: PermissionChange { .owner(from: owner, to: sid) }
     private var words: String {
-        change.words(who: { names[$0] ?? ADValues.wellKnownName($0) ?? $0 }, names: { _ in nil })
+        change.words(who: { PrincipalLabel.reviewed($0, names[$0], domainSID: session.domainSID) }, names: { _ in nil })
     }
 
     var body: some View {
@@ -408,7 +423,7 @@ struct OwnerSheet: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
             } else {
                 Form {
-                    FieldRow(label: "Now") { Text(names[owner] ?? ADValues.wellKnownName(owner) ?? owner).help(owner) }
+                    FieldRow(label: "Now") { Text(PrincipalLabel.reviewed(owner, names[owner], domainSID: session.domainSID)).help(owner) }
                     PrincipalField(session: session, sid: $sid, names: $names)
                 }
                 .formStyle(.grouped)

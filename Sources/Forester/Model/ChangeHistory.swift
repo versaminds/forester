@@ -14,8 +14,30 @@ struct ChangeRecord: Identifiable {
     var undo: UndoStep?
     var notUndoable: String?
     var undone = false
+    /// Made, but with a doubt about what the server kept (shown with it).
+    var warning: String?
 
     var canUndo: Bool { undo != nil && !undone }
+}
+
+/// A doubt a change finds after the server took it, such as a read-back
+/// that differs. The change itself is made, so it is recorded with its
+/// undo like any other, and the doubt goes with the record rather than
+/// failing it. Set for the task that runs one change (`collecting`).
+final class ChangeWarning: @unchecked Sendable {
+    @TaskLocal static var current: ChangeWarning?
+    private let lock = NSLock()
+    private var messages: [String] = []
+
+    /// Called from inside a change, wherever it runs.
+    static func note(_ message: String) {
+        guard let current else { return }
+        current.lock.withLock { current.messages.append(message) }
+    }
+
+    var message: String? {
+        lock.withLock { messages.isEmpty ? nil : messages.joined(separator: " ") }
+    }
 }
 
 /// How the caller of `DirectorySession.change` wants its change taken back.
@@ -242,15 +264,31 @@ extension DirectorySession {
             plan = .impossible(dn: step.dn, why: "To redo it, make the change again: what it sent (such as a password) is not kept.")
         }
         let done = Self.reversal(of: summary)
-        let ok = await change(done, undo: plan, registersUndo: registering) { connection in
-            if let action = step.action {
-                try await action(connection)
-            } else {
-                try await connection.modify(step.dn, step.modifications, controls: step.controls)
+        let ok = await collectingWarning(summary: done, dn: step.undoneAt ?? step.dn) {
+            await change(done, undo: plan, registersUndo: registering) { connection in
+                if let action = step.action {
+                    try await action(connection)
+                } else {
+                    try await connection.modify(step.dn, step.modifications, controls: step.controls)
+                }
             }
         }
         guard ok else { return nil }
         if let index = history.firstIndex(where: { $0.id == id }) { history[index].undone = true }
         return history.first?.id
+    }
+
+    /// Runs `change` (a call of `change(_:…)`) with a place for its doubts;
+    /// one it made with a doubt keeps it on its record, newest first, and
+    /// says so in the window instead of only that it was done.
+    func collectingWarning(summary: String, dn: String, _ change: () async -> Bool) async -> Bool {
+        let warning = ChangeWarning()
+        let ok = await ChangeWarning.$current.withValue(warning) { await change() }
+        guard ok, let message = warning.message else { return ok }
+        if let index = history.firstIndex(where: { $0.summary == summary && $0.dn == dn && $0.warning == nil }) {
+            history[index].warning = message
+        }
+        report(message, isError: true)
+        return ok
     }
 }
