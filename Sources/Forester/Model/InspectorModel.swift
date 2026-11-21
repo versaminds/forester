@@ -345,8 +345,15 @@ final class MembershipModel {
         for base in searchBases(session, for: entry.dn) {
             let request = LDAPSearchRequest(base: base, scope: .subtree, filter: filter, attributes: ["1.1"])
             let pageSize = session.profile.pageSize
-            found += try await session.run { try await $0.pagedSearch(request, pageSize: pageSize, limit: Self.nestedLimit) }
-                .entries.map(\.dn)
+            do {
+                found += try await session.run { try await $0.pagedSearch(request, pageSize: pageSize, limit: Self.nestedLimit) }
+                    .entries.map(\.dn)
+            } catch let error as LDAPError where error.resultCode == .noSuchObject {
+                // A server can list a naming context whose top entry does not
+                // exist (a database not filled yet, one kept for sign-in): it
+                // holds no groups, and the others are still searched.
+                continue
+            }
         }
         return found
     }

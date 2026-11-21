@@ -96,13 +96,17 @@ enum ForestChecks {
 
         // A group of corp.example with a member from each domain.
         session.open(readers)
-        try await Automation.waitFor("group shown") { session.inspector.entry.map { DN.isSame($0.dn, readers) } == true }
+        // The entry is read again when opened; its members are worked out from
+        // that read, so the wait is for it as well.
+        try await Automation.waitFor("group shown") {
+            session.inspector.entry.map { DN.isSame($0.dn, readers) } == true && !session.inspector.loading
+        }
         session.inspector.tab = .membership
         try await Automation.waitFor("members read") { !session.inspector.membership.loading }
         let members = session.inspector.membership.members
         try expect("a group's member from the child domain is read from there, named and known as a user",
                    members.contains { DN.isSame($0.dn, lieve) && $0.kind == .user }
-                       && members.contains { $0.dn.hasPrefix("CN=Pieter Van Damme") })
+                       && members.contains { DN.isSame($0.dn, pieter) })
 
         // Stop browsing: the root goes, the connection closes, and the
         // entries are no longer read.
