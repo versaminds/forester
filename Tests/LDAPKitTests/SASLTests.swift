@@ -230,4 +230,19 @@ struct SASLServerTests {
         await #expect(throws: LDAPError.signIn("Choose the certificate to sign in with.")) { try await none.bindExternal() }
         await none.close()
     }
+
+    /// This server asks every client for a certificate but goes on without
+    /// one. With none chosen the handshake goes on, and the server saw no
+    /// certificate: asked to sign in by it, it has nothing to sign in as.
+    @Test(arguments: [LDAPConnection.Security.startTLS, .ldaps])
+    func withoutAChosenCertificateNoneIsShown(_ security: LDAPConnection.Security) async throws {
+        let connection = try await Self.connect(security)
+        _ = try await connection.rootDSE()
+        #expect(await connection.clientCertificateRequested)
+        let (result, _) = try await connection.saslBind(mechanism: "EXTERNAL", credentials: [])
+        let who = try await connection.whoAmI()
+        await connection.close()
+        #expect(result.code != .success, "signed in by a certificate nobody chose")
+        #expect(who == "anonymous" || who == nil, "\(who ?? "")")
+    }
 }

@@ -11,10 +11,24 @@ public enum LDIF {
         var out = line("dn", Data(entry.dn.utf8))
         for attribute in entry.attributes {
             for value in attribute.values {
-                out += line(attribute.name, value)
+                out += attributeLine(attribute.name, value)
             }
         }
         return out + "\n"
+    }
+
+    /// Names that mean something to LDIF itself after the DN. A server's
+    /// entry with an attribute so named (`changetype: delete`) would be read
+    /// back as a change record, or a control, not the entry exported.
+    static let recordKeywords: Set<String> = ["changetype", "control", "dn"]
+
+    /// An attribute's value line; one named as a record keyword is written
+    /// as a comment, so it is kept for a person to read but never imported.
+    static func attributeLine(_ name: String, _ value: Data) -> String {
+        let base = (name.split(separator: ";", maxSplits: 1).first.map(String.init) ?? name).lowercased()
+        guard recordKeywords.contains(base) else { return line(name, value) }
+        // Folded lines go on as part of the comment (RFC 2849).
+        return "# An attribute named as an LDIF keyword, left out of the record:\n# " + line(name, value)
     }
 
     public static func document(_ entries: [LDAPEntry]) -> String {

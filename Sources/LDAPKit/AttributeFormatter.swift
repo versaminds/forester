@@ -163,6 +163,17 @@ public enum AttributeFormatter {
         }
     }
 
+    /// The most characters a table cell or tooltip shows of one value.
+    public static let cellLimit = 2_000
+
+    /// `text` for a table cell: whole when short, otherwise its start and
+    /// its size. Laying out one value of many megabytes in a cell, or its
+    /// tooltip, stopped the app; the value viewer shows it whole.
+    public static func cellText(_ text: String) -> String {
+        guard text.utf8.count > cellLimit else { return text }
+        return String(text.prefix(cellLimit)) + "… (" + byteCount(text.utf8.count) + ")"
+    }
+
     // MARK: Pieces
 
     static func plain(_ text: String) -> FormattedValue {

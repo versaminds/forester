@@ -66,10 +66,9 @@ import Testing
         }
         var single = try Self.descriptor([Self.base[1]])
         #expect(throws: PermissionEditError.emptyAccessList) { try single.apply(.remove(Self.base[1])) }
-        // An allowance before a denial: nothing is added, but a rule may go.
+        // An allowance before a denial: nothing is added (nor removed, below).
         var disordered = try Self.descriptor([Self.base[1], Self.base[0], Self.inherited])
         #expect(throws: PermissionEditError.notCanonical) { try disordered.apply(.add(Self.ace(ACE.accessAllowed))) }
-        try disordered.apply(.remove(Self.base[0]))
         #expect(sd == (try Self.descriptor(Self.base)))
     }
 
@@ -113,6 +112,107 @@ import Testing
             #expect(AccessRuleDraft(try each.ace()) == each)
             #expect(AccessRules.describe(try each.ace()) { _ in nil }.appliesTo == scope.label)
         }
+    }
+
+    /// A rule set here with object inherit alone (0x01), or with it no
+    /// propagation (0x05) or inherit only (0x09), comes back from the editor
+    /// with the very flags it had: none of them gains container inherit,
+    /// which would reach every descendant. Unchanged, it compares equal.
+    @Test(arguments: [UInt8(0x01), 0x05, 0x09, 0x0D, 0x00, 0x02, 0x03, 0x06, 0x07, 0x0A, 0x0B, 0x0E, 0x0F])
+    func editorKeepsTheInheritanceFlags(_ flags: UInt8) throws {
+        for object in [nil, Self.description] {
+            let ace = Self.ace(object == nil ? ACE.accessAllowed : ACE.accessAllowedObject, flags, 0x20, object: object)
+            let draft = try #require(AccessRuleDraft(ace))
+            #expect(try draft.ace() == ace, "flags 0x\(String(flags, radix: 16))")
+            #expect(try draft.ace().flags == flags)
+        }
+        // Object inherit alone is not "this object and all descendants".
+        if flags & 0x02 == 0, flags & 0x01 != 0 {
+            let described = AccessRules.describe(Self.ace(ACE.accessAllowed, flags, 0x20)) { _ in nil }
+            #expect(described.appliesTo.contains("object inherit"), "\(described.appliesTo)")
+            #expect(!AccessRuleDraft.Scope.allCases.map(\.label).contains(described.appliesTo))
+        }
+    }
+
+    /// Scope changed in the editor: container inherit comes and goes with
+    /// it, object inherit stays, and back to where it was gives the rule back.
+    @Test func objectInheritRuleChangedAndBack() throws {
+        let ace = Self.ace(ACE.accessAllowed, 0x09, 0x20)
+        var draft = try #require(AccessRuleDraft(ace))
+        draft.scope = .thisAndDescendants
+        #expect(try draft.ace().flags == 0x03)
+        draft.scope = .descendants
+        #expect(try draft.ace().flags == 0x0B)
+        draft.scope = .thisObject
+        #expect(try draft.ace() == ace)
+        // A rule with container inherit narrowed to this object drops both.
+        var wide = try #require(AccessRuleDraft(Self.ace(ACE.accessAllowed, 0x03, 0x20)))
+        wide.scope = .thisObject
+        #expect(try wide.ace().flags == 0)
+    }
+
+    /// A SID typed in another spelling is stored as the SID it is.
+    @Test func typedSIDsAreStoredCanonically() throws {
+        var draft = AccessRuleDraft()
+        draft.sid = "s-1-5-021-0001-2-3-0512"
+        draft.mask = 0x20
+        #expect(try draft.ace().sid == "S-1-5-21-1-2-3-512")
+        #expect(ADValues.canonicalSID(" s-1-1-00 ") == "S-1-1-0")
+        #expect(ADValues.canonicalSID("S-1-5-x") == nil)
+    }
+
+    /// Out of the order Windows applies, nothing is removed or changed
+    /// either: putting a rule back (Undo) could not put it where it was once
+    /// the list moved, and a denial could end up ahead of an allowance.
+    @Test func anOutOfOrderListIsNotChanged() throws {
+        var disordered = try Self.descriptor([Self.base[1], Self.base[0], Self.inherited])
+        let before = disordered
+        #expect(throws: PermissionEditError.notCanonical) { try disordered.apply(.remove(Self.base[0], at: 1)) }
+        #expect(throws: PermissionEditError.notCanonical) { try disordered.apply(.remove(Self.base[1], at: 0)) }
+        #expect(throws: PermissionEditError.notCanonical) {
+            try disordered.apply(.replace(Self.base[0], with: Self.ace(ACE.accessDenied, 0, 0x10000, Self.everyone), at: 1))
+        }
+        #expect(disordered == before)
+    }
+
+    /// A rule of a kind Forester does not read is named as one, with its
+    /// type, and is neither removed nor changed.
+    @Test func anUnreadRuleIsNamedAndLeftAlone() throws {
+        let callback = ACE(type: 0x09, flags: 0, mask: 0x20, sid: "", raw: Data([0x09, 0, 8, 0, 0x20, 0, 0, 0]))
+        var sd = try Self.descriptor([Self.base[1], callback, Self.inherited])
+        #expect(throws: PermissionEditError.self) { try sd.apply(.remove(callback, at: 1)) }
+        #expect(throws: PermissionEditError.self) { try sd.apply(.replace(callback, with: Self.ace(ACE.accessAllowed), at: 1)) }
+        let words = PermissionChange.remove(callback).words(who: { $0.isEmpty ? "" : "someone" }, names: { _ in nil })
+        #expect(words == "Remove a rule of a kind Forester does not read (type 0x09).")
+        #expect(!words.contains("Allow") && !words.contains(" :"))
+    }
+
+    /// A RID is named ("Domain Admins") only in this domain's SIDs: the same
+    /// RID in another domain is another group, and is not given this name.
+    @Test func ridNamesOnlyInThisDomain() {
+        #expect(ADValues.wellKnownName("S-1-5-21-1-2-3-512", inDomain: "S-1-5-21-1-2-3") == "Domain Admins")
+        #expect(ADValues.wellKnownName("S-1-5-21-9-9-9-512", inDomain: "S-1-5-21-1-2-3") == nil)
+        #expect(ADValues.wellKnownName("S-1-5-21-9-9-9-512", inDomain: nil) == nil)
+        #expect(ADValues.wellKnownName("S-1-5-32-544", inDomain: nil) == "Administrators")
+        #expect(ADValues.wellKnownName("S-1-1-0", inDomain: "S-1-5-21-1-2-3") == "Everyone")
+    }
+
+    /// What the server kept, read back after the write, against what was
+    /// sent: only the rules set here count, and an answer that could not be
+    /// read is told apart from one that differs.
+    @Test func theReadBackIsJudgedNotThrown() throws {
+        var sent = try Self.descriptor(Self.base)
+        try sent.apply(.add(Self.ace(ACE.accessAllowed)))
+        let change = PermissionChange.add(Self.ace(ACE.accessAllowed))
+        #expect(PermissionWriteCheck(stored: nil, sent: sent, change: change) == .notReadBack)
+        #expect(PermissionWriteCheck(stored: Data([1, 2, 3]), sent: sent, change: change) == .notReadBack)
+        #expect(PermissionWriteCheck(stored: try sent.encoded(), sent: sent, change: change) == .kept)
+        var reordered = sent
+        reordered.dacl?.aces.append(Self.ace(ACE.accessAllowed, 0x12, 0x10, Self.everyone))
+        #expect(PermissionWriteCheck(stored: try reordered.encoded(), sent: sent, change: change) == .kept)
+        #expect(PermissionWriteCheck(stored: try Self.descriptor(Self.base).encoded(), sent: sent, change: change) == .storedDifferently)
+        #expect(PermissionWriteCheck.kept.warning == nil)
+        #expect(PermissionWriteCheck.storedDifferently.warning != nil && PermissionWriteCheck.notReadBack.warning != nil)
     }
 
     @Test func changesInWords() {
@@ -275,7 +375,8 @@ struct ADPermissionTests {
             draft.mask = 0x20
             draft.objectType = Self.description
             let rule = try draft.ace()
-            try await connection.changePermissions(of: dn, .add(rule))
+            // Taken and read back as sent.
+            #expect(try await connection.changePermissions(of: dn, .add(rule)) == .kept)
             let added = try SecurityDescriptor(data: try await Self.descriptor(connection, dn, flags: SecurityDescriptor.daclPart))
             #expect(added.dacl?.aces.contains(rule) == true)
             #expect(try await Self.pieterMayWriteDescription(dn))

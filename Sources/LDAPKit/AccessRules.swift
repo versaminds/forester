@@ -129,17 +129,25 @@ public enum AccessRules {
             if rest != 0 { access.append(String(format: "Other rights (0x%X)", rest)) }
         }
         let flags = ace.flags
-        let inheritOnly = flags & 0x8 != 0, containerInherit = flags & 0x2 != 0 || flags & 0x1 != 0, oneLevel = flags & 0x4 != 0
+        let inheritOnly = flags & 0x8 != 0, containerInherit = flags & 0x2 != 0, objectInherit = flags & 0x1 != 0
+        let oneLevel = flags & 0x4 != 0
         let classLabel = name(ace.inheritedObjectType)?.name ?? ace.inheritedObjectType?.uuidString.lowercased()
         var appliesTo: String
         switch (containerInherit, inheritOnly, classLabel) {
+        case (false, _, _) where objectInherit:
+            // Object inherit without container inherit is not the editor's
+            // "this object and all descendants", and is named apart so the
+            // two are never taken for each other.
+            let descendants = classLabel.map { "descendant \($0) objects" } ?? "descendant objects"
+            appliesTo = (inheritOnly ? descendants.prefix(1).uppercased() + descendants.dropFirst() : "This object and \(descendants)")
+                + " by object inherit only (no container inherit)"
         case (false, _, _): appliesTo = "This object only"
         case (true, false, nil): appliesTo = "This object and all descendant objects"
         case (true, true, nil): appliesTo = "All descendant objects"
         case (true, false, let type?): appliesTo = "This object and descendant \(type) objects"
         case (true, true, let type?): appliesTo = "Descendant \(type) objects"
         }
-        if containerInherit, oneLevel { appliesTo += ", one level down only" }
+        if containerInherit || objectInherit, oneLevel { appliesTo += ", one level down only" }
         var detail = String(format: "Mask 0x%X", mask)
         if let type = ace.objectType { detail += ", object \(type.uuidString.lowercased())" }
         if let type = ace.inheritedObjectType { detail += ", inherited by \(type.uuidString.lowercased())" }

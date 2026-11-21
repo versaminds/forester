@@ -30,6 +30,8 @@ final class DirectorySession: Identifiable {
     private(set) var isSecure = false
     /// Encrypted by Kerberos rather than TLS (a connection without TLS).
     private(set) var isSealed = false
+    /// The Kerberos service that proved itself, on a connection Kerberos seals.
+    private(set) var kerberosServer: String?
     /// `S-1-5-21-…` of the domain, read from the domain object, for resolving
     /// primary groups (stored as a bare RID).
     private(set) var domainSID: String?
@@ -170,7 +172,7 @@ final class DirectorySession: Identifiable {
         case .failed(let message): return message
         case .connected:
             var parts = [server?.kind.label ?? "LDAP", profile.host]
-            parts.append(isSealed ? "Kerberos encryption" : (isSecure ? (profile.trust.trustAnyCertificate ? "TLS, certificate not checked" : "TLS") : "unencrypted"))
+            parts.append(isSealed ? (kerberosServer.map { "Kerberos encryption, server \($0)" } ?? "Kerberos encryption") : (isSecure ? (profile.trust.trustAnyCertificate ? "TLS, certificate not checked" : "TLS") : "unencrypted"))
             if let identity { parts.append(identity == "anonymous" ? "anonymous" : identity.replacingOccurrences(of: "dn:", with: "")) }
             return parts.joined(separator: " · ")
         }
@@ -214,6 +216,7 @@ final class DirectorySession: Identifiable {
         identity = nil
         isSecure = false
         isSealed = false
+        kerberosServer = nil
         schema = nil
         domainLooksLikeAD = false
         domainSID = nil
@@ -339,6 +342,7 @@ final class DirectorySession: Identifiable {
             let info = ServerInfo(rootDSE: root)
             let secure = await fresh.isSecure
             let sealed = await fresh.isSealed
+            let kerberosName = sealed ? await fresh.kerberosServer : nil
             var who = try? await fresh.whoAmI()
             if profile.authentication.usesPassword, who == nil || who == "anonymous" {
                 who = profile.bindName
@@ -362,6 +366,7 @@ final class DirectorySession: Identifiable {
             server = info
             isSecure = secure
             isSealed = sealed
+            kerberosServer = kerberosName
             identity = who
             domainSID = sid
             domainLooksLikeAD = looksLikeAD

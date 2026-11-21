@@ -224,8 +224,8 @@ struct AccountPanel: View {
             cannotChange = (try? await AccountActions.readSecurityDescriptor(entry.dn, session: session))??.userCannotChangePassword
         }
         .sheet(isPresented: $resettingPassword) { PasswordSheet(session: session, entry: entry) }
-        .alert(confirming == Self.smartCard ? "Require a smart card for \(DN.displayName(entry.dn))?"
-                   : "Stop requiring Kerberos pre-authentication for \(DN.displayName(entry.dn))?",
+        .alert(confirming == Self.smartCard ? "Require a smart card for \(VisibleText.reveal(DN.displayName(entry.dn)))?"
+                   : "Stop requiring Kerberos pre-authentication for \(VisibleText.reveal(DN.displayName(entry.dn)))?",
                isPresented: Binding(get: { confirming != nil }, set: { if !$0 { confirming = nil } })) {
             Button(confirming == Self.smartCard ? "Require Smart Card" : "Stop Requiring It", role: .destructive) {
                 guard let bit = confirming else { return }

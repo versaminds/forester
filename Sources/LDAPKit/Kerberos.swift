@@ -48,10 +48,25 @@ extension LDAPConnection {
     }
 
     /// `sealing`: ask Kerberos to encrypt everything after the bind, and
-    /// refuse to finish the sign-in without it.
-    func bindKerberos(channelBinding binding: Data?, sealing: Bool) async throws {
-        let context = try GSSContext(service: "ldap@\(options.host)", channelBinding: binding, sealing: sealing)
+    /// refuse to finish the sign-in without it. `serviceHost`, for tests:
+    /// the name asked for, as DNS might have turned the host into another.
+    func bindKerberos(channelBinding binding: Data?, sealing: Bool, serviceHost: String? = nil) async throws {
+        kerberosServer = nil
+        let context = try GSSContext(service: "ldap@\(serviceHost ?? options.host)", channelBinding: binding, sealing: sealing)
         var token = try context.step(nil)
+        // Without TLS nothing but Kerberos says who the server is, and GSS
+        // may have asked for the name DNS gave the host (an alias followed,
+        // an address looked up), which whoever answers DNS can choose. The
+        // server must be the LDAP service of the very host connected to.
+        var server: String?
+        func checkServer() throws {
+            guard server == nil, context.isComplete else { return }
+            let name = try context.acceptorName()
+            if sealing, !GSSContext.acceptorMatches(name, host: options.host) {
+                throw LDAPError.kerberos("Kerberos signed in to “\(name)”, not to the LDAP service of “\(options.host)”, so the connection was not used: without TLS, only that name says who the server is. Connect by the server's own name, as its Kerberos name has it, or use StartTLS or LDAPS.")
+            }
+            server = name
+        }
         // A layer agreed on for a bind that then failed must not seal what
         // this connection sends next.
         defer { disarmSecurityLayer() }
@@ -61,6 +76,7 @@ extension LDAPConnection {
             let (result, serverToken) = try await saslBind(mechanism: "GSSAPI", credentials: token)
             if result.code == .success {
                 guard context.isComplete else { throw LDAPError.kerberos("The server accepted the sign-in before proving who it is.") }
+                try checkServer()
                 // The layer takes effect with the bind's answer. A server that
                 // says yes without having agreed on one would read what comes
                 // next in the clear.
@@ -68,13 +84,17 @@ extension LDAPConnection {
                     throw LDAPError.kerberos("The server accepted the Kerberos sign-in without agreeing to encrypt the connection, so it is not used. Use StartTLS or LDAPS.")
                 }
                 boundDN = nil
+                kerberosServer = server
                 return
             }
             guard result.code == .saslBindInProgress else { throw LDAPError.server(result, operation: "Kerberos sign-in") }
             if !context.isComplete {
                 token = try context.step(serverToken ?? [])
+                // Checked before anything else is sent on its word.
+                try checkServer()
                 continue
             }
+            try checkServer()
             // The server offers its security layers: one octet of flags (1
             // none, 2 signing, 4 encryption) and three of the largest message
             // it takes, wrapped but not encrypted (RFC 4752 §3.1).
@@ -252,14 +272,57 @@ final class GSSContext {
         defer { var ignored: OM_uint32 = 0; gss_release_buffer(&ignored, &output) }
         guard Self.succeeded(major) else { throw Self.error(major, minor, service: nil) }
         isComplete = major & Self.continueNeeded == 0
-        if isComplete, flags & OM_uint32(GSS_C_MUTUAL_FLAG) == 0 {
-            throw LDAPError.kerberos("The server did not prove who it is.")
-        }
-        let protects = OM_uint32(GSS_C_INTEG_FLAG) | OM_uint32(GSS_C_CONF_FLAG)
-        if isComplete, sealing, flags & protects != protects {
-            throw LDAPError.kerberos("Kerberos did not agree to encrypt this connection, so it was not used. Use StartTLS or LDAPS.")
+        if isComplete, let problem = Self.missingProtection(flags, sealing: sealing) {
+            throw LDAPError.kerberos(problem)
         }
         return Self.bytes(output)
+    }
+
+    /// What the flags a complete context returned leave out, in words; nil
+    /// when nothing. Sealing needs, besides encryption and signing, every
+    /// message numbered (sequence) and a repeat refused (replay): without
+    /// them a message recorded on the network could be sent again, or
+    /// dropped, unnoticed.
+    static func missingProtection(_ flags: OM_uint32, sealing: Bool) -> String? {
+        guard flags & OM_uint32(GSS_C_MUTUAL_FLAG) != 0 else { return "The server did not prove who it is." }
+        guard sealing else { return nil }
+        let protects = OM_uint32(GSS_C_INTEG_FLAG) | OM_uint32(GSS_C_CONF_FLAG)
+        guard flags & protects == protects else {
+            return "Kerberos did not agree to encrypt this connection, so it was not used. Use StartTLS or LDAPS."
+        }
+        let ordered = OM_uint32(GSS_C_SEQUENCE_FLAG) | OM_uint32(GSS_C_REPLAY_FLAG)
+        guard flags & ordered == ordered else {
+            return "Kerberos did not agree to number the encrypted messages and refuse repeated ones, so the connection was not used. Use StartTLS or LDAPS."
+        }
+        return nil
+    }
+
+    /// The name of the server the completed context authenticated, as
+    /// Kerberos displays it ("ldap/dc01.corp.example@CORP.EXAMPLE").
+    func acceptorName() throws -> String {
+        guard let context, isComplete else { throw LDAPError.kerberos("The Kerberos exchange is not complete.") }
+        var minor: OM_uint32 = 0
+        var target: gss_name_t?
+        let major = gss_inquire_context(&minor, context, nil, &target, nil, nil, nil, nil, nil)
+        defer { if target != nil { var ignored: OM_uint32 = 0; gss_release_name(&ignored, &target) } }
+        guard Self.succeeded(major), let target else { throw Self.error(major, minor, service: nil) }
+        var buffer = gss_buffer_desc()
+        let shown = gss_display_name(&minor, target, &buffer, nil)
+        defer { var ignored: OM_uint32 = 0; gss_release_buffer(&ignored, &buffer) }
+        guard Self.succeeded(shown) else { throw Self.error(shown, minor, service: nil) }
+        return String(decoding: Self.bytes(buffer), as: UTF8.self)
+    }
+
+    /// Whether `principal`, a Kerberos service name, is the LDAP service of
+    /// `host` exactly: `ldap/host@REALM` (any realm) or `ldap@host`, in any
+    /// case, a trailing dot aside. A name DNS turned the host into is not.
+    static func acceptorMatches(_ principal: String, host: String) -> Bool {
+        var name = Substring(principal)
+        if let at = name.lastIndex(of: "@"), name.contains("/") { name = name[..<at] }
+        let parts = name.split(separator: name.contains("/") ? "/" : "@", omittingEmptySubsequences: false)
+        guard parts.count == 2, parts[0].caseInsensitiveCompare("ldap") == .orderedSame else { return false }
+        func bare(_ text: Substring) -> String { (text.hasSuffix(".") ? text.dropLast() : text).lowercased() }
+        return !parts[1].isEmpty && bare(parts[1]) == bare(Substring(host))
     }
 
     /// No calling or routine error (the top sixteen bits); the low bits are

@@ -79,15 +79,19 @@ public actor LDAPConnection {
         public var trust: TrustPolicy
         /// The certificate to show a server that asks for one (SASL EXTERNAL).
         public var clientIdentity: ClientIdentity?
+        /// The most bytes of responses one request may bring (a read, a
+        /// search, one page of a paged search); past it the request fails.
+        public var maxBytesPerRequest: Int
 
         public init(host: String, port: Int, security: Security, timeout: TimeInterval = 30, trust: TrustPolicy = TrustPolicy(),
-                    clientIdentity: ClientIdentity? = nil) {
+                    clientIdentity: ClientIdentity? = nil, maxBytesPerRequest: Int = LDAPConnection.maxBytesPerRequest) {
             self.host = host
             self.port = port
             self.security = security
             self.timeout = timeout
             self.trust = trust
             self.clientIdentity = clientIdentity
+            self.maxBytesPerRequest = maxBytesPerRequest
         }
     }
 
@@ -103,6 +107,9 @@ public actor LDAPConnection {
     /// Kerberos encryption.
     public var isSecure: Bool { usesTLS || isSealed }
     public internal(set) var boundDN: String?
+    /// After a Kerberos sign-in: the server Kerberos authenticated, as it
+    /// names it ("ldap/dc01.corp.example@CORP.EXAMPLE"), for showing.
+    public internal(set) var kerberosServer: String?
 
     private var transport: LDAPTransport?
 
@@ -130,6 +137,8 @@ public actor LDAPConnection {
         let name: String
         let continuation: CheckedContinuation<[LDAPResponse], Error>
         var responses: [LDAPResponse] = []
+        /// Bytes of the responses so far, as they came over the network.
+        var bytes = 0
         var timeoutTask: Task<Void, Never>?
         /// How long to wait for the next response; counted again from each one,
         /// so a long search that keeps sending entries does not time out.
@@ -333,6 +342,12 @@ public actor LDAPConnection {
     /// More results than this for one request (one page of a paged search)
     /// are refused rather than kept.
     static let maxResponsesPerRequest = 1_000_000
+
+    /// What one request's responses may come to: far more than a page of a
+    /// big directory or an entry with photos, far less than fills a Mac.
+    /// Counted as they arrive, so a server that sends one endless answer,
+    /// to a read or a search without paging alike, is stopped in time.
+    public static let maxBytesPerRequest = 512 << 20
 
     /// What one paged search may gather in all, entries and bytes of values:
     /// more than any directory a person browses, less than fills a Mac.
@@ -587,9 +602,10 @@ public actor LDAPConnection {
         }
         var offset = 0
         while let (element, next) = try BERDecoder.element(in: buffer, at: offset) {
+            let size = next - offset
             offset = next
             let wasSealed = securityLayer != nil
-            dispatch(try LDAPCodec.decodeResponse(element))
+            dispatch(try LDAPCodec.decodeResponse(element), size: size)
             if !wasSealed, let securityLayer {
                 // That was the bind that agreed on the layer, the last message
                 // in the clear: whatever came after it is encrypted.
@@ -601,7 +617,7 @@ public actor LDAPConnection {
         if offset > 0 { buffer.removeSubrange(0..<offset) }
     }
 
-    private func dispatch(_ response: LDAPResponse) {
+    private func dispatch(_ response: LDAPResponse, size: Int) {
         if let armed = armedSecurityLayer, case .bind(let result, _) = response.kind, pending[response.messageID] != nil {
             armedSecurityLayer = nil
             if result.code == .success { securityLayer = armed }
@@ -618,12 +634,15 @@ public actor LDAPConnection {
         }
         guard let operation = pending[response.messageID] else { return }
         operation.responses.append(response)
-        if operation.responses.count > Self.maxResponsesPerRequest {
+        operation.bytes += size
+        if operation.responses.count > Self.maxResponsesPerRequest || operation.bytes > options.maxBytesPerRequest {
             // A server that never stops sending would use up the Mac's memory.
             pending[response.messageID] = nil
             operation.timeoutTask?.cancel()
-            operation.continuation.resume(throwing: LDAPError.protocolError(
-                "The server sent more than \(Self.maxResponsesPerRequest.formatted()) results for one request; the rest were not read."))
+            let tooMany = operation.responses.count > Self.maxResponsesPerRequest
+            operation.continuation.resume(throwing: LDAPError.protocolError(tooMany
+                ? "The server sent more than \(Self.maxResponsesPerRequest.formatted()) results for one request; the rest were not read."
+                : "The server sent more than \(AttributeFormatter.byteCount(options.maxBytesPerRequest)) for one request; the rest were not read. Narrow it with a filter, fewer attributes or a smaller base."))
             abandon(response.messageID)
             return
         }

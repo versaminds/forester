@@ -448,10 +448,4 @@ enum Pasteboard {
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(text, forType: .string)
     }
-
-    static func copy(image data: Data) {
-        guard let image = NSImage(data: data) else { return }
-        NSPasteboard.general.clearContents()
-        NSPasteboard.general.writeObjects([image])
-    }
 }

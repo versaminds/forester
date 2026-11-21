@@ -34,13 +34,9 @@
 	<true/>
 	<key>NSHumanReadableCopyright</key>
 	<string>© 2026 VersaMinds. Source code under the PolyForm Shield License 1.0.0.</string>
-	<key>NSAppTransportSecurity</key>
-	<dict>
-		<!-- Directory servers are internal hosts with their own CAs and, on older
-		     domain controllers, older TLS. The app evaluates and pins certificates
-		     itself, so App Transport Security's web defaults do not apply. -->
-		<key>NSAllowsArbitraryLoads</key>
-		<true/>
-	</dict>
+	<!-- No NSAppTransportSecurity exception: App Transport Security governs
+	     HTTP loads, and the only ones are Sparkle's feed and downloads, over
+	     HTTPS. Directory connections are stream tasks that evaluate and pin
+	     certificates themselves, with TLS 1.2 at least (LDAPTransport). -->
 </dict>
 </plist>

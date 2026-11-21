@@ -82,7 +82,7 @@ struct AttributesView: View {
             let shown = needle.isEmpty ? values : zip(values, attribute.haystacks).filter { $0.1.contains(needle) }.map(\.0)
             guard !shown.isEmpty else { return nil }
             if values.count == 1 { return values[0] }
-            let summary = values.prefix(4).map(\.formatted.text).joined(separator: "; ") + (values.count > 4 ? " …" : "")
+            let summary = values.prefix(4).map { AttributeFormatter.cellText($0.formatted.text) }.joined(separator: "; ") + (values.count > 4 ? " …" : "")
             return AttributeRow(id: "\(attribute.name)#all", name: attribute.name, valueIndex: nil, valueCount: values.count,
                                 value: values[0].value,
                                 formatted: FormattedValue(text: summary, kind: values[0].formatted.kind), children: shown)
@@ -149,7 +149,7 @@ struct AttributesView: View {
                                                                set: { if !$0 { confirmingDelete = [] } })) {
             Button("Delete", role: .destructive) { delete(confirmingDelete) }
         } message: {
-            Text("This changes \(DN.displayName(entry.dn)) in the directory and cannot be undone.")
+            Text("This changes \(VisibleText.reveal(DN.displayName(entry.dn))) in the directory and cannot be undone.")
         }
     }
 
@@ -244,28 +244,28 @@ struct AttributesView: View {
     @ViewBuilder
     private func valueCell(_ row: AttributeRow) -> some View {
         if row.isGroup {
-            Text(row.formatted.text).lineLimit(1).foregroundStyle(.secondary)
+            Text(AttributeFormatter.cellText(row.formatted.text)).lineLimit(1).foregroundStyle(.secondary)
         } else if decoded, row.formatted.kind == .distinguishedName, let dn = row.formatted.links.first {
             Button { session.open(dn) } label: {
-                Text(dn)
+                Text(AttributeFormatter.cellText(dn))
                     .lineLimit(1)
                     .truncationMode(.middle)
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
             .buttonStyle(.link)
             .help("Open \(dn)")
-        } else if decoded, row.formatted.kind == .image, let image = NSImage(data: row.value) {
+        } else if decoded, row.formatted.kind == .image, let image = DirectoryImages.image(row.value, points: 20) {
             HStack {
                 Image(nsImage: image).resizable().aspectRatio(contentMode: .fit).frame(height: 20)
                 Text(row.formatted.text).foregroundStyle(.secondary)
             }
         } else {
-            Text(decoded ? row.formatted.text : row.raw)
+            Text(AttributeFormatter.cellText(decoded ? row.formatted.text : row.raw))
                 .lineLimit(1)
                 .truncationMode(.tail)
                 .font(Self.isCode(row, decoded: decoded) ? .body.monospaced() : .body)
                 .foregroundStyle(row.formatted.kind == .binary ? .secondary : .primary)
-                .help(decoded ? (row.formatted.detail ?? row.formatted.text) : row.formatted.text)
+                .help(AttributeFormatter.cellText(decoded ? (row.formatted.detail ?? row.formatted.text) : row.formatted.text))
         }
     }
 
@@ -327,7 +327,7 @@ struct ValueViewer: View {
                 Spacer()
             }
             if row.formatted.kind != .text && row.formatted.kind != .binary {
-                Text(row.formatted.text).textSelection(.enabled)
+                Text(AttributeFormatter.cellText(row.formatted.text)).textSelection(.enabled)
                 if let detail = row.formatted.detail {
                     Text(detail).font(.callout.monospaced()).foregroundStyle(.secondary).textSelection(.enabled)
                 }
@@ -343,7 +343,7 @@ struct ValueViewer: View {
                 }
                 Spacer()
                 Button("Copy") {
-                    if row.formatted.kind == .image { Pasteboard.copy(image: row.value) } else { Pasteboard.copy(row.raw) }
+                    if row.formatted.kind == .image { DirectoryImages.copy(row.value) } else { Pasteboard.copy(row.raw) }
                 }
                 Button("Done") { dismiss() }.keyboardShortcut(.defaultAction)
             }
@@ -354,7 +354,7 @@ struct ValueViewer: View {
 
     @ViewBuilder
     private var content: some View {
-        if row.formatted.kind == .image, let image = NSImage(data: row.value) {
+        if row.formatted.kind == .image, let image = DirectoryImages.image(row.value, points: 600) {
             Image(nsImage: image)
                 .resizable()
                 .aspectRatio(contentMode: .fit)
@@ -369,14 +369,11 @@ struct ValueViewer: View {
             .padding(8)
             .background(.background.secondary, in: RoundedRectangle(cornerRadius: 6))
         } else {
-            ScrollView {
-                Text(String(decoding: row.value, as: UTF8.self))
-                    .font(.callout.monospaced())
-                    .textSelection(.enabled)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-            }
-            .padding(8)
-            .background(.background.secondary, in: RoundedRectangle(cornerRadius: 6))
+            // The whole value, however long: a text view lays out only what
+            // is on screen, where a Text would lay out every megabyte at once.
+            LongTextView(text: String(decoding: row.value, as: UTF8.self))
+                .padding(8)
+                .background(.background.secondary, in: RoundedRectangle(cornerRadius: 6))
         }
     }
 
@@ -392,5 +389,29 @@ struct ValueViewer: View {
         }
         if data.count > bytes.count { lines.append("… \(data.count - bytes.count) more bytes") }
         return lines.joined(separator: "\n")
+    }
+}
+
+/// Read-only, selectable text of any length, laid out as it scrolls into view.
+struct LongTextView: NSViewRepresentable {
+    let text: String
+
+    func makeNSView(context: Context) -> NSScrollView {
+        let scroll = NSTextView.scrollableTextView()
+        scroll.drawsBackground = false
+        if let view = scroll.documentView as? NSTextView {
+            view.isEditable = false
+            view.isSelectable = true
+            view.drawsBackground = false
+            view.font = .monospacedSystemFont(ofSize: NSFont.smallSystemFontSize + 1, weight: .regular)
+            view.layoutManager?.allowsNonContiguousLayout = true
+            view.string = text
+        }
+        return scroll
+    }
+
+    func updateNSView(_ scroll: NSScrollView, context: Context) {
+        guard let view = scroll.documentView as? NSTextView, view.string != text else { return }
+        view.string = text
     }
 }

@@ -130,7 +130,7 @@ struct ConnectionProfile: Codable, Identifiable, Hashable {
         guard security == .none else { return nil }
         switch authentication {
         case .kerberos: return "Without TLS, Kerberos encrypts this connection itself, and Forester connects only if the server agrees to that."
-        case .scram: return "This connection is not encrypted: the password is not sent, but everything read travels in clear text."
+        case .scram: return "This connection is not encrypted: the password is not sent, but everything read travels in clear text, and anyone on the network can change what is sent and received after sign-in."
         case .simple: return "This connection is not encrypted; the password and everything read travel in clear text."
         case .anonymous, .certificate: return "This connection is not encrypted; everything read travels in clear text."
         }

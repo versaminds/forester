@@ -20,14 +20,16 @@ struct DeleteEntrySheet: View {
     @State private var confirmText = ""
 
     private var name: String { DN.displayName(dn) }
+    /// The name as it must be read and typed: hidden characters written out.
+    private var shownName: String { VisibleText.reveal(name) }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             HStack(alignment: .top, spacing: 14) {
                 Image(systemName: "trash.fill").font(.system(size: 30)).foregroundStyle(.red)
                 VStack(alignment: .leading, spacing: 6) {
-                    Text("Delete “\(name)”?").font(.headline)
-                    Text(dn).font(.caption.monospaced()).foregroundStyle(.secondary).textSelection(.enabled)
+                    Text("Delete “\(shownName)”?").font(.headline)
+                    Text(VisibleText.reveal(dn)).font(.caption.monospaced()).foregroundStyle(.secondary).textSelection(.enabled)
                 }
             }
             if counting {
@@ -36,7 +38,7 @@ struct DeleteEntrySheet: View {
                 Label("Forester could not count the entries beneath it (\(countError)). Any there are will be deleted too.",
                       systemImage: "exclamationmark.triangle.fill")
                     .foregroundStyle(.orange)
-                TextField("Type \(name) to confirm", text: $confirmText).textFieldStyle(.roundedBorder)
+                TextField("Type \(shownName) to confirm", text: $confirmText).textFieldStyle(.roundedBorder)
             } else if let descendants, descendants > 0 {
                 Label("It contains \(atLeast ? "at least " : "")\(descendants.formatted()) \(descendants == 1 && !atLeast ? "entry" : "entries"), which will be deleted too.",
                       systemImage: "exclamationmark.triangle.fill")
@@ -45,7 +47,7 @@ struct DeleteEntrySheet: View {
                      ? "The server deletes the subtree in one operation (tree delete)."
                      : "They are deleted one by one, deepest first.")
                     .font(.caption).foregroundStyle(.secondary)
-                TextField("Type \(name) to confirm", text: $confirmText).textFieldStyle(.roundedBorder)
+                TextField("Type \(shownName) to confirm", text: $confirmText).textFieldStyle(.roundedBorder)
             } else {
                 Text("This cannot be undone.").foregroundStyle(.secondary)
             }
@@ -62,7 +64,7 @@ struct DeleteEntrySheet: View {
                     if deleting { ProgressView().controlSize(.small) } else { Text(mayHaveChildren ? "Delete All" : "Delete") }
                 }
                 .keyboardShortcut(.defaultAction)
-                .disabled(counting || deleting || (mayHaveChildren && confirmText != name))
+                .disabled(counting || deleting || (mayHaveChildren && !VisibleText.confirms(confirmText, name)))
             }
         }
         .padding(20)
@@ -169,7 +171,7 @@ struct RenameMoveSheet: View {
                     }
                 }
                 Section {
-                    ValueRow(label: "New DN", value: newDN, monospaced: true)
+                    ValueRow(label: "New DN", value: VisibleText.reveal(newDN), monospaced: true)
                 }
             }
             .formStyle(.grouped)

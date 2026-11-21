@@ -217,8 +217,8 @@ struct DirectoryOutline: NSViewRepresentable {
             guard (info.draggingSource as? NSOutlineView) === outlineView,
                   let target = item as? TreeModel.Node, let dragged = info.draggingPasteboard.string(forType: .string) else { return false }
             let alert = NSAlert()
-            alert.messageText = "Move “\(DN.displayName(dragged))” to “\(target.name)”?"
-            alert.informativeText = "From \(DN.parent(dragged).map(DN.canonicalName) ?? "")\nto \(DN.canonicalName(target.dn))\non \(session.profile.displayName) (\(session.profile.host))"
+            alert.messageText = "Move “\(VisibleText.reveal(DN.displayName(dragged)))” to “\(VisibleText.reveal(target.name))”?"
+            alert.informativeText = "From \(VisibleText.reveal(DN.parent(dragged).map(DN.canonicalName) ?? ""))\nto \(VisibleText.reveal(DN.canonicalName(target.dn)))\non \(session.profile.displayName) (\(session.profile.host))"
             alert.addButton(withTitle: "Move")
             alert.addButton(withTitle: "Cancel")
             guard alert.runModal() == .alertFirstButtonReturn else { return false }

@@ -73,7 +73,7 @@ Requires macOS 14 or later. If Forester saves you time, you can
 - **User**: `user@corp.example`, `CORP\user` or a full DN.
 - **Certificates**: if your organisation's root CA is in Keychain Access, it just
   works. Otherwise the app shows the certificate chain and its SHA-256
-  fingerprint: **Trust Once** for this session, or **Always Trust** to pin it to
+  fingerprint: **Trust Once** until you disconnect, or **Always Trust** to pin it to
   the connection (forget it again in the connection's settings).
 - Bind failures are explained in words: AD's `data 52e`, `775`, `532` and the
   like become "wrong password", "locked out", "password expired".
@@ -164,7 +164,10 @@ every domain through the global catalog.
 
 **Import and export.** LDIF import of entries and change records (add, modify,
 rename, delete) with continue-on-error, "skip or update existing entries",
-progress, a per-record log and an optional log file. LDIF export of an entry,
+progress, a per-record log and an optional log file. Before anything is sent,
+every record other than a plain add, or outside the container you expect,
+is listed with its DN and what it changes, with a warning for administrators'
+groups, permissions, account flags, delegation and passwords. LDIF export of an entry,
 its children or a whole subtree, and CSV or LDIF export of search results.
 
 **Server.** Server information from the root DSE (controls and extensions by

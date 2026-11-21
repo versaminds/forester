@@ -327,8 +327,8 @@ final class ResultTextCell: NSTableCellView {
     required init?(coder: NSCoder) { fatalError("not used") }
 
     func configure(_ text: String, secondary: Bool, help: String? = nil) {
-        label.stringValue = text
+        label.stringValue = AttributeFormatter.cellText(text)
         label.textColor = secondary ? .secondaryLabelColor : .labelColor
-        toolTip = help
+        toolTip = help.map(AttributeFormatter.cellText)
     }
 }

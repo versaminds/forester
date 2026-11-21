@@ -53,6 +53,12 @@ struct LDIFImportSheet: View {
     @State private var running = false
     @State private var finished = false
     @State private var task: Task<Void, Never>?
+    /// Where the file's entries are expected: what lands elsewhere is listed.
+    @State private var container = ""
+    /// What the file does beyond plain adds there, record by record; nil
+    /// while the directory is asked which groups hold administrator rights.
+    @State private var review: LDIFImportReview?
+    @State private var privilegedGroups: Set<String> = []
 
     private var done: Int { log.count }
     private var failures: Int { log.filter { !$0.ok }.count }
@@ -63,8 +69,11 @@ struct LDIFImportSheet: View {
 
     private var showsLog: Bool { running || finished }
 
+    private var hasWarnings: Bool { (review?.warnings ?? 0) > 0 }
+
     private var status: String? {
         if !session.canWrite { return "This connection is read-only. Turn on editing to import." }
+        if hasWarnings { return "Read the warnings above before importing." }
         if file == nil { return "Choose an LDIF file, or drop one here." }
         if !references.isEmpty && !readReferencedFiles { return "Allow the files it refers to, or choose another file." }
         return nil
@@ -97,6 +106,11 @@ struct LDIFImportSheet: View {
                             }
                         } else if !records.isEmpty {
                             ValueRow(label: "Contains", value: summary)
+                            FieldRow(label: "Expected in", help: "The container the file's entries belong in. Records that land elsewhere are listed below.") {
+                                TextField("Expected in", text: $container, prompt: Text("Any container"))
+                                    .labelsHidden().textFieldStyle(.roundedBorder).autocorrectionDisabled()
+                                    .font(.callout.monospaced())
+                            }
                         }
                         if !references.isEmpty {
                             Toggle(isOn: $readReferencedFiles) {
@@ -112,6 +126,9 @@ struct LDIFImportSheet: View {
                                 parse()
                             }
                         }
+                    }
+                    if !records.isEmpty, parseError == nil {
+                        reviewSection
                     }
                     Section("Options") {
                         Toggle(isOn: $continueOnError) {
@@ -183,13 +200,20 @@ struct LDIFImportSheet: View {
                 }
                 Button(finished ? "Close" : "Cancel", role: .cancel) { dismiss() }.keyboardShortcut(.cancelAction)
                 if !finished {
+                    // With warnings, Return does not import: it takes a click.
                     Button("Import \(records.count) Record\(records.count == 1 ? "" : "s")", action: checkThenStart)
-                        .keyboardShortcut(.defaultAction)
-                        .disabled(records.isEmpty || parsing || !session.canWrite)
+                        .keyboardShortcut(hasWarnings ? nil : .defaultAction)
+                        .disabled(records.isEmpty || parsing || review == nil || !session.canWrite)
                 }
             }
         }
-        .onAppear { if let initialFile, file == nil { load(initialFile) } }
+        .onAppear {
+            if container.isEmpty { container = session.newEntryParent ?? "" }
+            if let initialFile, file == nil { load(initialFile) }
+        }
+        .onChange(of: container) { _, _ in
+            if review != nil { review = LDIFImportReview(records, container: container, privilegedGroups: privilegedGroups) }
+        }
         .alert(replacingTitle, isPresented: Binding(get: { replacing != nil }, set: { if !$0 { replacing = nil } })) {
             Button("Replace Values", role: .destructive) { replacing = nil; start() }
             Button("Cancel", role: .cancel) { replacing = nil }
@@ -197,6 +221,94 @@ struct LDIFImportSheet: View {
             Text(replacingMessage)
         }
         .onDisappear { task?.cancel() }
+    }
+
+    /// Every record that is not a plain add where expected, with its whole
+    /// DN and what it changes; the sensitive ones say why, in orange.
+    @ViewBuilder
+    private var reviewSection: some View {
+        if let review {
+            if !review.items.isEmpty {
+                Section {
+                    if review.warnings > 0 {
+                        Label("\(review.warnings) \(review.warnings == 1 ? "change touches" : "changes touch") administrator rights, accounts, delegation or passwords. Check each before importing.",
+                              systemImage: "exclamationmark.triangle.fill")
+                            .foregroundStyle(.orange)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    ScrollView {
+                        LazyVStack(alignment: .leading, spacing: 10) {
+                            ForEach(review.items) { item in reviewRow(item) }
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.vertical, 4)
+                    }
+                    .frame(height: min(240, CGFloat(review.items.count) * 70 + 10))
+                } header: {
+                    Text("Before It Runs")
+                } footer: {
+                    FormFooter("Listed: \(review.items.count) of \(records.count) records. Not listed: entries added in the expected container that set none of the attributes warned about.")
+                }
+            }
+        } else {
+            Section {
+                HStack {
+                    ProgressView().controlSize(.small)
+                    Text("Checking what the file changes…").foregroundStyle(.secondary)
+                }
+            }
+        }
+    }
+
+    private func reviewRow(_ item: LDIFImportReview.Item) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            HStack(spacing: 6) {
+                Image(systemName: item.warnings.isEmpty ? "info.circle" : "exclamationmark.triangle.fill")
+                    .foregroundStyle(item.warnings.isEmpty ? Color.secondary : Color.orange)
+                    .accessibilityHidden(true)
+                Text("Line \(item.line): \(item.verb)" + (item.outside ? ", outside the expected container" : ""))
+                    .font(.callout.weight(.medium))
+            }
+            Text(VisibleText.reveal(item.dn)).font(.caption.monospaced()).textSelection(.enabled)
+                .fixedSize(horizontal: false, vertical: true)
+            if let newDN = item.newDN {
+                Text("to " + VisibleText.reveal(newDN)).font(.caption.monospaced()).textSelection(.enabled)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            ForEach(Array(item.changes.enumerated()), id: \.offset) { _, change in
+                Text(change).font(.caption).foregroundStyle(.secondary).lineLimit(3).textSelection(.enabled)
+            }
+            ForEach(item.warnings, id: \.self) { warning in
+                Text(warning).font(.caption).foregroundStyle(.orange).fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .accessibilityElement(children: .combine)
+    }
+
+    /// Asks the directory which of the groups whose members the file changes
+    /// hold administrator rights, then lists the records.
+    private func reviewRecords(_ found: [LDIFRecord], run: Int) {
+        review = nil
+        privilegedGroups = []
+        let groups = LDIFImportReview.groupsChangingMembers(found)
+        Task {
+            var privileged = Set<String>()
+            if !groups.isEmpty {
+                // A group that cannot be read is judged by its name alone.
+                let entries = (try? await session.run { try await $0.readEach(groups, attributes: ["adminCount", "objectSid"], skippingErrors: true) }) ?? []
+                let read = Dictionary(entries.map { (DN.normalized($0.dn), $0) }, uniquingKeysWith: { first, _ in first })
+                for group in groups {
+                    let entry = read[DN.normalized(group)]
+                    let sid = entry?.values("objectSid").first.flatMap(ADValues.sidString)
+                    if LDIFImportReview.privilegedGroup(dn: group, sid: sid, adminCount: entry?.int("adminCount").map(Int.init)) {
+                        privileged.insert(DN.normalized(group))
+                    }
+                }
+            }
+            guard run == parseRun else { return }
+            privilegedGroups = privileged
+            review = LDIFImportReview(found, container: container, privilegedGroups: privileged)
+        }
     }
 
     private func logRow(_ line: LogLine) -> some View {
@@ -321,6 +433,7 @@ struct LDIFImportSheet: View {
         parseRun += 1
         let run = parseRun
         records = []
+        review = nil
         parseError = nil
         if !references.isEmpty && !readReferencedFiles {
             parsing = false
@@ -337,6 +450,7 @@ struct LDIFImportSheet: View {
             case .success(let found):
                 records = found
                 parseError = found.isEmpty ? "The file holds no records." : nil
+                reviewRecords(found, run: run)
             case .failure(let error):
                 parseError = error.localizedDescription
             }
@@ -437,20 +551,19 @@ struct LDIFImportSheet: View {
         }
     }
 
+    /// One line per record, whatever its DN or the server's message holds.
     private var logText: String {
         let stamp = ISO8601DateFormatter().string(from: Date())
-        var text = "# Forester import of \(file?.lastPathComponent ?? "LDIF") into \(session.profile.endpoint), \(stamp)\n"
-        for line in log {
-            text += "line \(line.record.line)\t\(line.record.summary)\t\(line.record.dn)\t\(line.ok ? "OK" : "FAILED")"
-            text += line.message.isEmpty ? "\n" : "\t\(line.message)\n"
-        }
+        var text = "# Forester import of \(LDIFImportLog.escape(file?.lastPathComponent ?? "LDIF")) into \(LDIFImportLog.escape(session.profile.endpoint)), \(stamp)\n"
+        for line in log { text += LDIFImportLog.line(line.record, ok: line.ok, message: line.message) }
         return text
     }
 
+    /// Beside the LDIF, numbered after any log already there, which is kept.
     private func saveLog(next file: URL) {
-        let url = file.deletingPathExtension().appendingPathExtension("import-log.txt")
+        let url = LDIFImportLog.url(beside: file)
         do {
-            try logText.write(to: url, atomically: true, encoding: .utf8)
+            try Data(logText.utf8).write(to: url, options: .withoutOverwriting)
         } catch {
             session.report("The log could not be written: \(error.localizedDescription)", isError: true)
         }

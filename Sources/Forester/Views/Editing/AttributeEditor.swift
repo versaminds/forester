@@ -455,7 +455,7 @@ struct BinaryField: View {
 
     var body: some View {
         HStack(spacing: 10) {
-            if isImage, let image = NSImage(data: data) {
+            if isImage, let image = DirectoryImages.image(data, points: 64) {
                 Image(nsImage: image).resizable().aspectRatio(contentMode: .fit).frame(width: 64, height: 64)
                     .clipShape(RoundedRectangle(cornerRadius: 6))
             }

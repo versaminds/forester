@@ -77,13 +77,30 @@ public enum ADValues {
         571: "Allowed RODC Password Replication Group", 572: "Denied RODC Password Replication Group",
     ]
 
-    /// A name for a well-known SID, such as "Authenticated Users" or "Domain Admins".
+    /// A name for a well-known SID, such as "Authenticated Users" or "Domain
+    /// Admins". A domain's RIDs are named whichever domain the SID is of.
     public static func wellKnownName(_ sid: String) -> String? {
         if let name = wellKnownSIDs[sid] { return name }
         if sid.hasPrefix("S-1-5-21-"), let rid = rid(sid), sid.split(separator: "-").count == 8 {
             return wellKnownRIDs[rid]
         }
         return nil
+    }
+
+    /// A name for a well-known SID where a name says which group it is: a
+    /// RID ("Domain Admins") only within `domain`, the SID of the domain the
+    /// connection is to. The same RID in another domain is that domain's
+    /// group, and a typed SID named as this domain's would mislead.
+    public static func wellKnownName(_ sid: String, inDomain domain: String?) -> String? {
+        if let name = wellKnownSIDs[sid] { return name }
+        guard let domain, let own = domainSID(of: sid), own.caseInsensitiveCompare(domain) == .orderedSame else { return nil }
+        return wellKnownName(sid)
+    }
+
+    /// The SID written the one way it reads back from its bytes (`S-1-5-21-…`,
+    /// no leading zeros or lowercase), or nil when it is not a SID.
+    public static func canonicalSID(_ text: String) -> String? {
+        sidData(text.trimmingCharacters(in: .whitespacesAndNewlines)).flatMap(sidString)
     }
 
     // MARK: GUIDs

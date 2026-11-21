@@ -59,6 +59,15 @@ if [[ -z "$FEED" ]]; then
   [[ "$ADHOC" == 1 ]] || fail "the app has no updater: put the update key's public half in Resources/sparkle-public-key (docs/DISTRIBUTION.md)."
   echo "No updater in this test build: Resources/sparkle-public-key is missing."
 fi
+# Directory connections need no exception from App Transport Security, and
+# an update is checked against the key before it is unpacked.
+if /usr/libexec/PlistBuddy -c "Print :NSAppTransportSecurity" "$APP/Contents/Info.plist" >/dev/null 2>&1; then
+  fail "the app turns App Transport Security off (NSAppTransportSecurity in Resources/Info.plist)."
+fi
+if [[ -n "$FEED" ]]; then
+  [[ $(/usr/libexec/PlistBuddy -c "Print :SUVerifyUpdateBeforeExtraction" "$APP/Contents/Info.plist" 2>/dev/null) == true ]] \
+    || fail "the app does not verify updates before unpacking them (SUVerifyUpdateBeforeExtraction, build-app.sh)."
+fi
 
 SIGNATURE=$(codesign -dvv "$APP" 2>&1)
 IDENTITY=$(print -r -- "$SIGNATURE" | sed -n 's/^Authority=\(Developer ID Application: .*\)$/\1/p' | head -1)

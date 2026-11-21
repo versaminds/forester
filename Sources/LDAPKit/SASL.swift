@@ -45,6 +45,13 @@ extension LDAPConnection {
     public func bindSCRAM(user: String, password: String) async throws {
         guard !user.isEmpty else { throw LDAPError.signIn("Enter a user name.") }
         guard !password.isEmpty else { throw LDAPError.signIn("Enter a password.") }
+        // Whoever is in between, with any certificate accepted, ends the TLS
+        // connection and reads the exchange: the salt, the rounds and the
+        // proof, enough to guess the password at leisure. Refused before
+        // anything is sent, as Kerberos is.
+        if options.security != .none, options.trust.trustAnyCertificate {
+            throw LDAPError.signIn("SCRAM sign-in is not used with “Accept any certificate”: whoever is between this Mac and the server would see the exchange and could guess the password from it. Trust the server's certificate instead.")
+        }
         let root = try await read("", attributes: ["supportedSASLMechanisms", "objectClass", "vendorName"])
         let offered = (root?.strings("supportedSASLMechanisms") ?? []).map { $0.uppercased() }
         let plus = usesTLS && offered.contains("SCRAM-SHA-256-PLUS")
@@ -172,10 +179,10 @@ struct SCRAM {
     init(user: String, password: String, binding: Binding, hash: Hash = .sha256, nonce: String? = nil) throws {
         self.hash = hash
         self.binding = binding
-        self.password = Array(try Self.saslPrep(password).utf8)
-        clientNonce = nonce ?? Self.makeNonce()
+        self.password = Array(try Self.saslPrep(password, field: "password").utf8)
+        clientNonce = try nonce ?? Self.makeNonce()
         // "=" and "," would end the name early: RFC 5802 §5.1 escapes them.
-        let name = try Self.saslPrep(user).replacingOccurrences(of: "=", with: "=3D").replacingOccurrences(of: ",", with: "=2C")
+        let name = try Self.saslPrep(user, field: "user name").replacingOccurrences(of: "=", with: "=3D").replacingOccurrences(of: ",", with: "=2C")
         clientFirstBare = "n=\(name),r=\(clientNonce)"
     }
 
@@ -216,7 +223,7 @@ struct SCRAM {
     func verify(serverFinal: [UInt8]) throws {
         if let reason = Self.serverError(serverFinal) { throw LDAPError.signIn("SCRAM sign-in failed: \(reason).") }
         guard let expected = serverSignature, let text = Self.fields(String(decoding: serverFinal, as: UTF8.self))["v"],
-              let signature = Data(base64Encoded: text), [UInt8](signature) == expected else {
+              let signature = Data(base64Encoded: text), Self.constantTimeEqual([UInt8](signature), expected) else {
             throw LDAPError.signIn("The server could not prove that it knows the password, so the connection was not used. Something between this Mac and the server may be pretending to be it.")
         }
     }
@@ -243,10 +250,24 @@ struct SCRAM {
         return fields
     }
 
-    private static func makeNonce() -> String {
+    /// A nonce from the system's random numbers. Should they fail, the
+    /// buffer would stay zeros, the same nonce every time: refused instead.
+    static func makeNonce(random: (inout [UInt8]) -> OSStatus = { SecRandomCopyBytes(kSecRandomDefault, $0.count, &$0) }) throws -> String {
         var bytes = [UInt8](repeating: 0, count: 24)
-        _ = SecRandomCopyBytes(kSecRandomDefault, bytes.count, &bytes)
+        guard random(&bytes) == errSecSuccess else {
+            throw LDAPError.signIn("This Mac could not make the random numbers a SCRAM sign-in needs, so nothing was sent.")
+        }
         return Data(bytes).base64EncodedString()
+    }
+
+    /// Equal in time that does not depend on where the two differ, so the
+    /// time an answer takes says nothing about how much of a forged proof
+    /// was right.
+    static func constantTimeEqual(_ a: [UInt8], _ b: [UInt8]) -> Bool {
+        guard a.count == b.count else { return false }
+        var difference: UInt8 = 0
+        for index in a.indices { difference |= a[index] ^ b[index] }
+        return difference == 0
     }
 
     private static func hmac(_ key: [UInt8], _ data: [UInt8], hash: Hash) -> [UInt8] {
@@ -283,9 +304,14 @@ struct SCRAM {
 
     /// User names and passwords as SCRAM compares them: other spaces become
     /// a space, invisible joiners go, compatibility forms are unified (NFKC),
-    /// and control and private-use characters are refused. Unassigned code
-    /// points are let through, as RFC 4013 allows for what is not stored.
-    static func saslPrep(_ text: String) throws -> String {
+    /// and control and private-use characters are refused, as is
+    /// right-to-left text mixed with left-to-right. Unassigned code points
+    /// are let through, as RFC 4013 allows for what is not stored.
+    ///
+    /// `field` names what was refused ("password"). The character itself is
+    /// never named: it may be one of the password's, and the message reaches
+    /// Diagnostics.
+    static func saslPrep(_ text: String, field: String = "user name or password") throws -> String {
         var mapped = String.UnicodeScalarView()
         for scalar in text.unicodeScalars {
             let value = scalar.value
@@ -299,10 +325,48 @@ struct SCRAM {
             }
         }
         let normalized = String(mapped).precomposedStringWithCompatibilityMapping
-        for scalar in normalized.unicodeScalars where prohibited(scalar.value) {
-            throw LDAPError.signIn(String(format: "The user name or password holds a character SCRAM does not allow (U+%04X).", scalar.value))
+        if normalized.unicodeScalars.contains(where: { prohibited($0.value) }) {
+            throw LDAPError.signIn("The \(field) holds a character SCRAM does not allow, such as a control or private-use character.")
+        }
+        // RFC 3454 §6: right-to-left text is not mixed with left-to-right,
+        // and starts and ends right to left, so it cannot be read two ways.
+        let scalars = Array(normalized.unicodeScalars)
+        if scalars.contains(where: { rightToLeft($0.value) }) {
+            guard !scalars.contains(where: leftToRight), let first = scalars.first, let last = scalars.last,
+                  rightToLeft(first.value), rightToLeft(last.value) else {
+                throw LDAPError.signIn("The \(field) mixes right-to-left and left-to-right text in a way SCRAM does not allow.")
+            }
         }
         return normalized
+    }
+
+    /// RFC 3454 table D.1: characters with bidirectional property R or AL.
+    private static func rightToLeft(_ value: UInt32) -> Bool {
+        switch value {
+        case 0x05BE, 0x05C0, 0x05C3, 0x05D0...0x05EA, 0x05F0...0x05F4, 0x061B, 0x061F, 0x0621...0x063A, 0x0640...0x064A,
+             0x066D...0x066F, 0x0671...0x06D5, 0x06DD, 0x06E5...0x06E6, 0x06FA...0x06FE, 0x0700...0x070D, 0x0710,
+             0x0712...0x072C, 0x0780...0x07A5, 0x07B1, 0x200F, 0xFB1D, 0xFB1F...0xFB28, 0xFB2A...0xFB36, 0xFB38...0xFB3C,
+             0xFB3E, 0xFB40...0xFB41, 0xFB43...0xFB44, 0xFB46...0xFBB1, 0xFBD3...0xFD3D, 0xFD50...0xFD8F, 0xFD92...0xFDC7,
+             0xFDF0...0xFDFC, 0xFE70...0xFE74, 0xFE76...0xFEFC:
+            return true
+        default:
+            return false
+        }
+    }
+
+    /// RFC 3454 table D.2, bidirectional property L, read from the general
+    /// category: letters and spacing marks, outside the right-to-left
+    /// blocks (whose letters added since table D.1 are not left to right).
+    /// Digits, spaces, punctuation and other neutral characters are not L.
+    private static func leftToRight(_ scalar: Unicode.Scalar) -> Bool {
+        switch scalar.value {
+        case 0x0590...0x08FF, 0xFB1D...0xFDFF, 0xFE70...0xFEFF, 0x10800...0x10FFF, 0x1E800...0x1EFFF: return false
+        default: break
+        }
+        switch scalar.properties.generalCategory {
+        case .uppercaseLetter, .lowercaseLetter, .titlecaseLetter, .modifierLetter, .otherLetter, .spacingMark: return true
+        default: return false
+        }
     }
 
     private static func prohibited(_ value: UInt32) -> Bool {
