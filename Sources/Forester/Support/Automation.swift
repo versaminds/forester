@@ -529,7 +529,8 @@ enum Automation {
             await session.tree.reveal(dn)
             session.open(dn)
             try await waitFor("\(dn) for the pictures") {
-                session.inspector.entry.map { DN.isSame($0.dn, dn) } == true && !session.inspector.membership.loading
+                session.inspector.entry.map { DN.isSame($0.dn, dn) } == true && !session.inspector.loading
+                    && !session.inspector.membership.loading
             }
             session.inspector.tab = tab
             if tab == .membership {

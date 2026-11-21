@@ -111,10 +111,16 @@ final class InspectorModel {
                     self.error = "This entry no longer exists, or you are not allowed to read it."
                     return
                 }
+                // Memberships worked out while the earlier read was still on
+                // screen are of that read: start them again from this one,
+                // nested groups too if they were asked for.
+                let wantedNested = self.membership.nested != nil || self.membership.nestedLoading
+                self.membership.clear()
                 self.entry = found
                 self.kind = ObjectKind.classify(found)
                 if !self.showsMembership, self.tab == .membership { self.tab = .overview }
                 self.loadMembershipIfNeeded()
+                if wantedNested, self.membership.holds(found) { self.membership.loadNested() }
             } catch {
                 guard let self, !Task.isCancelled else { return }
                 self.loading = false

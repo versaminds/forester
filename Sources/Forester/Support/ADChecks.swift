@@ -41,7 +41,8 @@ enum ADChecks {
             session.inspector.tab = .membership
             session.open(dn)
             try await Automation.waitFor("\(DN.displayName(dn)) shown") {
-                session.inspector.entry.map { DN.isSame($0.dn, dn) } == true && !session.inspector.membership.loading
+                session.inspector.entry.map { DN.isSame($0.dn, dn) } == true && !session.inspector.loading
+                    && !session.inspector.membership.loading
             }
         }
 
