@@ -284,7 +284,7 @@ extension LDIF {
         switch record.change {
         case .add(let attributes):
             if !record.isContent { out += "changetype: add\n" }
-            for attribute in attributes { for value in attribute.values { out += line(attribute.name, value) } }
+            for attribute in attributes { for value in attribute.values { out += attributeLine(attribute.name, value) } }
         case .delete:
             out += "changetype: delete\n"
         case .modify(let changes):
