@@ -198,6 +198,7 @@ final class AppModel {
             profile.security = session.profile.security
             profile.authentication = session.profile.authentication
             profile.bindName = session.profile.bindName
+            profile.clientCertificate = session.profile.clientCertificate
             profile.savePassword = session.profile.savePassword
             profile.pageSize = session.profile.pageSize
             profile.timeoutSeconds = session.profile.timeoutSeconds

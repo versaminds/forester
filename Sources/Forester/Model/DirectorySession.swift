@@ -228,10 +228,11 @@ final class DirectorySession: Identifiable {
         let reconnectNeeded = newProfile.options.host != profile.options.host || newProfile.port != profile.port
             || newProfile.security != profile.security || newProfile.authentication != profile.authentication
             || newProfile.bindName != profile.bindName || newProfile.baseDN != profile.baseDN
-            || newProfile.trust != profile.trust
+            || newProfile.trust != profile.trust || newProfile.clientCertificate != profile.clientCertificate
         let serverChanged = newProfile.options.host.lowercased() != profile.options.host.lowercased()
             || newProfile.port != profile.port || newProfile.security != profile.security
         let identityChanged = newProfile.bindName != profile.bindName || newProfile.authentication != profile.authentication
+            || newProfile.clientCertificate != profile.clientCertificate
         profile = newProfile
         if serverChanged {
             trustedOnce = []
