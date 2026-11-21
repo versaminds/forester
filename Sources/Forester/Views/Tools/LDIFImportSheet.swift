@@ -68,19 +68,24 @@ struct LDIFImportSheet: View {
     @State private var onlyFailures = false
 
     private var showsLog: Bool { running || finished }
+    /// The review is read before the import; once it runs, the log takes its place.
+    private var showsReview: Bool { !showsLog && !records.isEmpty && parseError == nil }
+    /// With the review listed the form can outgrow a small window, so the sheet
+    /// keeps one height and the form scrolls, the buttons staying in view.
+    private var fixedHeight: Bool { showsLog || (showsReview && !(review?.items.isEmpty ?? true)) }
 
     private var hasWarnings: Bool { (review?.warnings ?? 0) > 0 }
 
     private var status: String? {
         if !session.canWrite { return "This connection is read-only. Turn on editing to import." }
-        if hasWarnings { return "Read the warnings above before importing." }
+        if hasWarnings, showsReview { return "Read the warnings above before importing." }
         if file == nil { return "Choose an LDIF file, or drop one here." }
         if !references.isEmpty && !readReferencedFiles { return "Allow the files it refers to, or choose another file." }
         return nil
     }
 
     var body: some View {
-        SheetLayout(title: "Import LDIF", subtitle: "Into \(session.profile.displayName)", width: 640, height: showsLog ? 640 : nil) {
+        SheetLayout(title: "Import LDIF", subtitle: "Into \(session.profile.displayName)", width: 640, height: fixedHeight ? 640 : nil) {
             VStack(spacing: 0) {
                 Form {
                     Section {
@@ -127,7 +132,7 @@ struct LDIFImportSheet: View {
                             }
                         }
                     }
-                    if !records.isEmpty, parseError == nil {
+                    if showsReview {
                         reviewSection
                     }
                     Section("Options") {
@@ -152,7 +157,8 @@ struct LDIFImportSheet: View {
                 }
                 .formStyle(.grouped)
                 .formLabelWidth(120)
-                .hugsContent()
+                .scrollDisabled(showsLog || !fixedHeight)
+                .fixedSize(horizontal: false, vertical: showsLog || !fixedHeight)
                 .disabled(running || checking)
                 if showsLog {
                     Divider()

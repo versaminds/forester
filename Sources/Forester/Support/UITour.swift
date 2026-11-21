@@ -618,8 +618,23 @@ enum UITour {
         let importer = try await waitForSheet("import")
         // The file is read in the background; Return imports once it has been.
         try await Automation.waitFor("the file read") { D.buttons(in: importer).contains { $0.title.hasPrefix("Import ") && $0.enabled } }
+        // The sample sets account flags, which the review warns about, so
+        // Return must not import: that takes a click on the button.
         await D.pressReturn(in: importer)
-        try await Automation.waitFor("import done", timeout: 30) { (try? D.button("Close", in: importer)) != nil }
+        try await Automation.settle(1)
+        let stillThere = try await read(session, "OU=Imported,OU=Corp,\(base)")
+        try expect("with warnings listed, Return does not import", stillThere == nil && (try? D.button("Close", in: importer)) == nil)
+        guard let importButton = D.buttons(in: importer).first(where: { $0.title.hasPrefix("Import ") && $0.enabled }) else {
+            throw D.NotFound(description: "no Import button")
+        }
+        try D.click(importButton, importButton.title)
+        do {
+            try await Automation.waitFor("import done", timeout: 30) { (try? D.button("Close", in: importer)) != nil }
+        } catch {
+            Automation.log("the import sheet:\n\(D.describe(importer))")
+            try? sheetShot("11-import-stuck")
+            throw error
+        }
         try await Automation.settle(0.8)
         try sheetShot("11-import-done")
         let imported = "OU=Imported,OU=Corp,\(base)"
