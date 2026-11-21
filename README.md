@@ -205,21 +205,6 @@ Keyboard: ⌘1 Browse, ⌘2 Search, ⌘[ / ⌘] back and forward, ⌘L show in t
 ⇧⌘P reset password, ⇧⌘I domain information, ⌃⌘M server monitor, ⌥⌘S schema,
 ⇧⌘O import LDIF.
 
-## Compared with Arbor
-
-[Arbor](https://arbor-ldap.app/) is a commercial macOS LDAP browser. Forester
-covers its Active Directory, OpenLDAP and 389 Directory Server features, with
-these differences:
-
-- **eDirectory**: detected, and accounts are enabled, disabled and given
-  passwords the eDirectory way, but there is no ACL/trustee editor, effective
-  rights calculator, DirXML command submission or security-equivalence sync.
-  Those need an eDirectory server to build against.
-- **iCloud sync** works through iCloud Drive (Settings › Keep connections in
-  iCloud Drive) rather than CloudKit. Passwords stay in each Mac's own keychain
-  and are not synced.
-- **Server statistics on eDirectory** are not read.
-
 ## Testing
 
 [TESTING.md](TESTING.md) walks through it step by step. In short:
