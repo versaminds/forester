@@ -173,7 +173,10 @@ over StartTLS or LDAPS with the TLS channel bound into the exchange, or over
 plain LDAP with Kerberos encrypting every message itself; a server that will
 not encrypt is refused, never used unprotected. Saved with keychain passwords, imported and exported as
 `.forester` files (passwords never included), and optionally kept in
-iCloud Drive so they appear on your other Macs. Connections saved
+iCloud Drive so they appear on your other Macs. Connections that sign in with
+SCRAM or a certificate are kept in a file of their own beside the others,
+which Forester 1.1 on another Mac does not read, so it leaves them, and the
+rest of the list, as they are. Connections saved
 by the app under its earlier name, LDAP Explorer, are picked up on first launch;
 their passwords are asked for once.
 

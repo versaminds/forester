@@ -106,6 +106,25 @@ To run one suite:
 swift test --filter FilterTests
 ```
 
+### Saved connections and Forester 1.1
+
+Forester 1.1 reads `connections.json` whole, and on a Mac sharing it through
+iCloud Drive a connection it cannot read would make it save its own list over
+everyone's. Connections that sign in with SCRAM or a certificate therefore
+live in `connections-1.2.json` beside it. This checks that 1.1.1's own
+decoder and encoder (taken from the `v1.1.1` tag) read this version's file,
+write it back, and lose nothing:
+
+```bash
+scripts/check-connections-compatibility.sh
+```
+
+Eleven checks: 1.1.1 reads the connections it knows; after it changes one,
+adds one and reorders them, every connection is still there in the order
+last saved here, its change kept and its new one last; a connection written
+by a newer Forester that this one cannot read survives a save; a connection
+changed back to a simple bind moves to where 1.1.1 reads it.
+
 ## 2. Start the test directory
 
 ```bash

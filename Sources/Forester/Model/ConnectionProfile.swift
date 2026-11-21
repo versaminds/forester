@@ -233,8 +233,8 @@ final class ProfileStore {
     /// (see `Keychain`). Deleting a connection here deletes its password.
     @discardableResult
     func reloadIfChanged() -> Bool {
-        let modified = (try? FileManager.default.attributesOfItem(atPath: url.path))?[.modificationDate] as? Date
-        guard modified != nil, modified != loadedModification else { return false }
+        let modified = Self.modification(url), laterModified = Self.modification(laterURL)
+        guard (modified != nil && modified != loadedModification) || laterModified != laterModification else { return false }
         load()
         onReload?()
         return true
@@ -332,21 +332,105 @@ final class ProfileStore {
         persist()
     }
 
-    private func load() {
-        guard FileManager.default.fileExists(atPath: url.path) else { return }
+    // MARK: Two files, for Forester 1.1
+    //
+    // Forester 1.1 reads connections.json as a whole: one connection signing
+    // in a way it does not know makes it set the file aside, and its next
+    // save writes its own list over it, in iCloud Drive on every Mac. So
+    // connections that sign in a way 1.1 does not know (SCRAM, a certificate,
+    // and whatever comes later) live in a file of their own beside it, which
+    // 1.1 never opens. 1.1 reads and writes the connections it knows; the
+    // others, and the order of all of them, stay as they are.
+
+    /// Beside connections.json; 1.1 does not know it is there.
+    static let laterFileName = "connections-1.2.json"
+    private var laterURL: URL { url.deletingLastPathComponent().appendingPathComponent(Self.laterFileName) }
+    @ObservationIgnored private var laterModification: Date?
+    /// Entries of the later file this version cannot read (written by a
+    /// newer one), kept as they are and written back with the rest.
+    @ObservationIgnored private var unreadableLater: [JSONValue] = []
+    /// The later file could not be read at all: it is not written over.
+    @ObservationIgnored private var laterUnreadable = false
+
+    /// What the later file holds: its connections, and every connection's
+    /// place in the list, since 1.1 keeps the order of only its own.
+    private struct LaterFile: Codable {
+        var order: [UUID]
+        var profiles: [JSONValue]
+    }
+
+    private static func modification(_ url: URL) -> Date? {
+        (try? FileManager.default.attributesOfItem(atPath: url.path))?[.modificationDate] as? Date
+    }
+
+    /// Coordinated, so a file iCloud Drive has evicted is downloaded first.
+    private static func coordinatedRead(_ url: URL) throws -> Data {
+        var coordinationError: NSError?
+        var data: Data?
+        var readError: Error?
+        NSFileCoordinator().coordinate(readingItemAt: url, options: [], error: &coordinationError) { readURL in
+            do { data = try Data(contentsOf: readURL) } catch { readError = error }
+        }
+        if let error = coordinationError ?? readError { throw error }
+        return data ?? Data()
+    }
+
+    private static func coordinatedWrite(_ data: Data, to url: URL) throws {
+        var coordinationError: NSError?
+        var writeError: Error?
+        NSFileCoordinator().coordinate(writingItemAt: url, options: .forReplacing, error: &coordinationError) { writeURL in
+            do { try data.write(to: writeURL, options: .atomic) } catch { writeError = error }
+        }
+        if let error = coordinationError ?? writeError { throw error }
+    }
+
+    /// The connections 1.1 knows and the later ones, in the order last saved.
+    private func merged(_ known: [ConnectionProfile]) -> [ConnectionProfile] {
+        guard FileManager.default.fileExists(atPath: laterURL.path) else {
+            unreadableLater = []
+            laterUnreadable = false
+            laterModification = nil
+            return known
+        }
         do {
-            // Coordinated, so a file iCloud Drive has evicted is downloaded first.
-            var coordinationError: NSError?
-            var data: Data?
-            var readError: Error?
-            NSFileCoordinator().coordinate(readingItemAt: url, options: [], error: &coordinationError) { readURL in
-                do { data = try Data(contentsOf: readURL) } catch { readError = error }
+            let later = try JSONDecoder().decode(LaterFile.self, from: try Self.coordinatedRead(laterURL))
+            laterModification = Self.modification(laterURL)
+            laterUnreadable = false
+            var readable: [ConnectionProfile] = []
+            unreadableLater = []
+            for entry in later.profiles {
+                if let profile = try? JSONDecoder().decode(ConnectionProfile.self, from: JSONEncoder().encode(entry)) {
+                    readable.append(profile)
+                } else {
+                    unreadableLater.append(entry)
+                }
             }
-            if let error = coordinationError ?? readError { throw error }
-            profiles = try JSONDecoder().decode([ConnectionProfile].self, from: data ?? Data())
-            loadedModification = (try? FileManager.default.attributesOfItem(atPath: url.path))?[.modificationDate] as? Date
+            // A connection in both (1.1 wrote back an old copy of one since
+            // changed to a later kind of sign-in): the later one is the newer.
+            let all = known.filter { profile in !readable.contains { $0.id == profile.id } } + readable
+            let place = Dictionary(later.order.enumerated().map { ($1, $0) }, uniquingKeysWith: { first, _ in first })
+            // Those the order does not name (added by 1.1 since) go last.
+            return all.enumerated().sorted { a, b in
+                (place[a.element.id] ?? Int.max, a.offset) < (place[b.element.id] ?? Int.max, b.offset)
+            }.map(\.element)
+        } catch {
+            laterUnreadable = true
+            loadError = "Connections saved by a newer Forester could not be read (\(error.localizedDescription)); \(Self.laterFileName) is left as it is."
+            return known
+        }
+    }
+
+    private func load() {
+        guard FileManager.default.fileExists(atPath: url.path) else {
+            profiles = merged([])
+            return
+        }
+        do {
+            let known = try JSONDecoder().decode([ConnectionProfile].self, from: try Self.coordinatedRead(url))
+            loadedModification = Self.modification(url)
             loadError = nil
             unsavedUnreadable = false
+            profiles = merged(known)
         } catch {
             // The next save replaces the file (and, in iCloud Drive, every
             // Mac's copy), so each unreadable version is kept first, under a
@@ -379,16 +463,51 @@ final class ProfileStore {
             try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
             let encoder = JSONEncoder()
             encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-            let data = try encoder.encode(profiles)
-            var coordinationError: NSError?
-            var writeError: Error?
-            NSFileCoordinator().coordinate(writingItemAt: url, options: .forReplacing, error: &coordinationError) { writeURL in
-                do { try data.write(to: writeURL, options: .atomic) } catch { writeError = error }
+            let known = profiles.filter(\.authentication.isKnownToVersion11)
+            let later = profiles.filter { !$0.authentication.isKnownToVersion11 }
+            try Self.coordinatedWrite(try encoder.encode(known), to: url)
+            loadedModification = Self.modification(url)
+            if !laterUnreadable, !later.isEmpty || !unreadableLater.isEmpty || FileManager.default.fileExists(atPath: laterURL.path) {
+                let entries = try later.map { try JSONDecoder().decode(JSONValue.self, from: encoder.encode($0)) } + unreadableLater
+                try Self.coordinatedWrite(try encoder.encode(LaterFile(order: profiles.map(\.id), profiles: entries)), to: laterURL)
+                laterModification = Self.modification(laterURL)
             }
-            if let error = coordinationError ?? writeError { throw error }
-            loadedModification = (try? FileManager.default.attributesOfItem(atPath: url.path))?[.modificationDate] as? Date
         } catch {
             loadError = "Connections could not be saved: \(error.localizedDescription)"
+        }
+    }
+}
+
+extension ConnectionProfile.Authentication {
+    /// Forester 1.1 reads a connection signing in this way; one it does not
+    /// is kept in the later file (see `ProfileStore`).
+    var isKnownToVersion11: Bool { self == .anonymous || self == .simple || self == .kerberos }
+}
+
+/// Any JSON, kept as it was read: connections a newer Forester wrote, which
+/// this one cannot read but must not lose.
+indirect enum JSONValue: Codable, Hashable {
+    case null, bool(Bool), number(Double), string(String), array([JSONValue]), object([String: JSONValue])
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.singleValueContainer()
+        if c.decodeNil() { self = .null }
+        else if let value = try? c.decode(Bool.self) { self = .bool(value) }
+        else if let value = try? c.decode(Double.self) { self = .number(value) }
+        else if let value = try? c.decode(String.self) { self = .string(value) }
+        else if let value = try? c.decode([JSONValue].self) { self = .array(value) }
+        else { self = .object(try c.decode([String: JSONValue].self)) }
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var c = encoder.singleValueContainer()
+        switch self {
+        case .null: try c.encodeNil()
+        case .bool(let value): try c.encode(value)
+        case .number(let value): try c.encode(value)
+        case .string(let value): try c.encode(value)
+        case .array(let value): try c.encode(value)
+        case .object(let value): try c.encode(value)
         }
     }
 }
