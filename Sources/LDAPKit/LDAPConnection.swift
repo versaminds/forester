@@ -103,6 +103,9 @@ public actor LDAPConnection {
     /// Kerberos encryption.
     public var isSecure: Bool { usesTLS || isSealed }
     public internal(set) var boundDN: String?
+    /// After a Kerberos sign-in: the server Kerberos authenticated, as it
+    /// names it ("ldap/dc01.corp.example@CORP.EXAMPLE"), for showing.
+    public internal(set) var kerberosServer: String?
 
     private var transport: LDAPTransport?
 

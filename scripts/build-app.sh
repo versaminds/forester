@@ -86,7 +86,10 @@ if [[ -z "${FORESTER_APP_STORE:-}" ]]; then
   if [[ "$FEED" == https://* && -n "$KEY" ]]; then
     # No SUEnableAutomaticChecks: Sparkle asks on the second launch whether to
     # check automatically, so nothing is fetched before the person says yes.
-    /usr/libexec/PlistBuddy -c "Add :SUFeedURL string $FEED" -c "Add :SUPublicEDKey string $KEY" "$APP/Contents/Info.plist"
+    # An update is checked against the key before it is unpacked, so a
+    # download nobody signed is never opened.
+    /usr/libexec/PlistBuddy -c "Add :SUFeedURL string $FEED" -c "Add :SUPublicEDKey string $KEY" \
+      -c "Add :SUVerifyUpdateBeforeExtraction bool true" "$APP/Contents/Info.plist"
     echo "Updates from $FEED"
   else
     echo "No updater: Resources/sparkle-public-key is missing (see docs/DISTRIBUTION.md)."

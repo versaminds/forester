@@ -78,15 +78,34 @@ final class LDAPTransport: NSObject, URLSessionStreamDelegate, @unchecked Sendab
         self.trust = trust
         self.clientIdentity = clientIdentity
         super.init()
-        let configuration = URLSessionConfiguration.ephemeral
-        // Directory traffic goes straight to the server; an HTTP or SOCKS proxy
-        // configured for the web would only get in the way.
-        configuration.connectionProxyDictionary = [:]
+        let configuration = Self.configuration()
         let queue = OperationQueue()
         queue.maxConcurrentOperationCount = 1
         queue.name = "LDAPTransport \(host):\(port)"
         session = URLSession(configuration: configuration, delegate: self, delegateQueue: queue)
         task = session.streamTask(withHostName: host, port: port)
+    }
+
+    static func configuration() -> URLSessionConfiguration {
+        let configuration = URLSessionConfiguration.ephemeral
+        // Directory traffic goes straight to the server; an HTTP or SOCKS proxy
+        // configured for the web would only get in the way.
+        configuration.connectionProxyDictionary = [:]
+        // TLS 1.0 and 1.1 are broken and retired (RFC 8996); a server that
+        // offers nothing newer, or someone in between who says so, gets no
+        // connection rather than a weak one. Not a setting: nothing needs less.
+        configuration.tlsMinimumSupportedProtocolVersion = .TLSv12
+        return configuration
+    }
+
+    /// The answer to a server asking for a client certificate. Only the
+    /// certificate chosen for this connection is shown. Without one, the
+    /// handshake goes on without a certificate, and the server decides
+    /// whether that will do; the system's default handling could instead
+    /// pick one from the keychain (an identity preference for the host).
+    static func clientCertificateDisposition(_ identity: ClientIdentity?) -> (URLSession.AuthChallengeDisposition, URLCredential?) {
+        guard let identity else { return (.rejectProtectionSpace, nil) }
+        return (.useCredential, URLCredential(identity: identity.identity, certificates: nil, persistence: .none))
     }
 
     /// The leaf certificate of the handshake that was accepted (DER).
@@ -150,13 +169,8 @@ final class LDAPTransport: NSObject, URLSessionStreamDelegate, @unchecked Sendab
                           _ completion: @escaping (URLSession.AuthChallengeDisposition, URLCredential?) -> Void) {
         if challenge.protectionSpace.authenticationMethod == NSURLAuthenticationMethodClientCertificate {
             lock.withLock { _clientCertificateRequested = true }
-            // Only the certificate chosen for this connection; without one,
-            // the server decides whether to go on without.
-            guard let clientIdentity else {
-                completion(.performDefaultHandling, nil)
-                return
-            }
-            completion(.useCredential, URLCredential(identity: clientIdentity.identity, certificates: nil, persistence: .none))
+            let (disposition, credential) = Self.clientCertificateDisposition(clientIdentity)
+            completion(disposition, credential)
             return
         }
         guard challenge.protectionSpace.authenticationMethod == NSURLAuthenticationMethodServerTrust,

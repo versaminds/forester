@@ -114,6 +114,32 @@ struct KerberosTests {
     }
 
 
+    /// Without TLS, Kerberos's word is all there is about who the server is:
+    /// the name it authenticated is kept for showing, and must be the LDAP
+    /// service of the host connected to. GSS asking for another name (as DNS
+    /// can make it, an address or alias turned into a host name) is refused
+    /// before anything is sent on its word.
+    @Test func withoutTLSTheServerMustBeTheHostConnectedTo() async throws {
+        let named = try await Self.connection(.none, port: 11389)
+        try await named.open()
+        try await named.bindKerberos()
+        let server = await named.kerberosServer ?? ""
+        await named.close()
+        #expect(server.lowercased().hasPrefix("ldap/localhost@"), "\(server)")
+
+        let other = LDAPConnection(.init(host: "127.0.0.1", port: 11389, security: .none, timeout: 10))
+        try await other.open()
+        do {
+            try await other.bindKerberos(channelBinding: nil, sealing: true, serviceHost: "localhost")
+            Issue.record("signed in to a server of another name")
+        } catch let error as LDAPError {
+            #expect(error.localizedDescription.contains("ldap/localhost@"), "\(error.localizedDescription)")
+        }
+        let (sealed, server2) = (await other.isSealed, await other.kerberosServer)
+        #expect(!sealed && server2 == nil)
+        await other.close()
+    }
+
     /// With any certificate accepted, the ticket would be bound to whoever is
     /// in between, who could pass the exchange on: refused before it starts.
     @Test func refusedWithAnyCertificateAccepted() async throws {
