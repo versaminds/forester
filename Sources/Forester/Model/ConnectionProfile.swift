@@ -9,15 +9,20 @@ import Security
 /// A saved server: where it is, how to secure the connection, and how to bind.
 struct ConnectionProfile: Codable, Identifiable, Hashable {
     enum Authentication: String, Codable, CaseIterable {
-        case anonymous, simple, kerberos
+        case anonymous, simple, scram, kerberos, certificate
 
         var label: String {
             switch self {
             case .anonymous: return "Anonymous"
             case .simple: return "Name and password"
+            case .scram: return "Name and password (SCRAM)"
             case .kerberos: return "Kerberos ticket"
+            case .certificate: return "Certificate"
             }
         }
+
+        /// A password is typed, remembered in the keychain and asked for.
+        var usesPassword: Bool { self == .simple || self == .scram }
     }
 
     var id = UUID()
@@ -26,8 +31,12 @@ struct ConnectionProfile: Codable, Identifiable, Hashable {
     var port = 389
     var security: LDAPConnection.Security = .startTLS
     var authentication: Authentication = .simple
-    /// A DN, or for Active Directory `user@domain` or `DOMAIN\user`.
+    /// A DN, or for Active Directory `user@domain` or `DOMAIN\user`; for
+    /// SCRAM, the user name the server knows.
     var bindName = ""
+    /// The SHA-256 of the keychain certificate a certificate sign-in shows.
+    /// The certificate and its key stay in the keychain.
+    var clientCertificate = ""
     var savePassword = true
     /// Where browsing starts. Empty means the server's naming contexts.
     var baseDN = ""
@@ -62,6 +71,17 @@ struct ConnectionProfile: Codable, Identifiable, Hashable {
 
     var isSample: Bool { host.caseInsensitiveCompare(Self.sampleHost) == .orderedSame }
 
+    /// What travels readable on a connection without TLS, in words; nil with TLS.
+    var plainConnectionNote: String? {
+        guard security == .none else { return nil }
+        switch authentication {
+        case .kerberos: return "Without TLS, Kerberos encrypts this connection itself, and Forester connects only if the server agrees to that."
+        case .scram: return "This connection is not encrypted: the password is not sent, but everything read travels in clear text."
+        case .simple: return "This connection is not encrypted; the password and everything read travel in clear text."
+        case .anonymous, .certificate: return "This connection is not encrypted; everything read travels in clear text."
+        }
+    }
+
     var endpoint: String {
         let scheme = security == .ldaps ? "ldaps" : "ldap"
         return "\(scheme)://\(host):\(port)"
@@ -87,6 +107,7 @@ struct ConnectionProfile: Codable, Identifiable, Hashable {
         security = try c.decodeIfPresent(LDAPConnection.Security.self, forKey: .security) ?? .startTLS
         authentication = try c.decodeIfPresent(Authentication.self, forKey: .authentication) ?? .simple
         bindName = try c.decodeIfPresent(String.self, forKey: .bindName) ?? ""
+        clientCertificate = try c.decodeIfPresent(String.self, forKey: .clientCertificate) ?? ""
         savePassword = try c.decodeIfPresent(Bool.self, forKey: .savePassword) ?? true
         baseDN = try c.decodeIfPresent(String.self, forKey: .baseDN) ?? ""
         // A file can come from anywhere: numbers are kept to what the editor allows.
@@ -256,6 +277,9 @@ final class ProfileStore {
         for var profile in imported {
             profile.readOnly = true
             profile.trust = TrustPolicy()
+            // Which of this Mac's certificates to show a server is chosen
+            // here too, not by whoever wrote the file.
+            profile.clientCertificate = ""
             if let index = profiles.firstIndex(where: { $0.id == profile.id }) {
                 profiles[index] = profile
             } else {
@@ -408,9 +432,12 @@ enum Keychain {
     /// the user pins them while connecting, and a pin alone is no use to anyone
     /// who cannot also intercept the real server's traffic.
     static func connection(of profile: ConnectionProfile) -> Data {
-        let parts = ["forester-1", profile.host.trimmingCharacters(in: .whitespaces).lowercased(), String(profile.port),
+        var parts = ["forester-1", profile.host.trimmingCharacters(in: .whitespaces).lowercased(), String(profile.port),
                      profile.security.rawValue, profile.bindName.trimmingCharacters(in: .whitespaces).lowercased(),
                      profile.trust.trustAnyCertificate ? "any-certificate" : "checked-certificate"]
+        // SCRAM never sends the password; a simple bind does. A password saved
+        // for one is not handed to the other, which could send it in the clear.
+        if profile.authentication == .scram { parts.append("scram") }
         return Data(parts.joined(separator: "\n").utf8)
     }
 
@@ -520,6 +547,45 @@ enum Keychain {
         lock.withLock { known[id] = nil }
         SecItemDelete(query(id) as CFDictionary)
         SecItemDelete(query(id, service: formerService) as CFDictionary)
+    }
+}
+
+/// Certificates with a private key in the keychain (identities), for signing
+/// in with a certificate. Listing them reads only certificates; macOS asks
+/// before the key is first used to sign in.
+enum ClientCertificates {
+    struct Choice: Identifiable, Hashable {
+        let identity: ClientIdentity
+        let name: String
+        var id: String { identity.sha256Fingerprint }
+    }
+
+    static func all() -> [Choice] {
+        let query: [String: Any] = [kSecClass as String: kSecClassIdentity, kSecReturnRef as String: true,
+                                    kSecMatchLimit as String: kSecMatchLimitAll]
+        var found: CFTypeRef?
+        guard SecItemCopyMatching(query as CFDictionary, &found) == errSecSuccess,
+              let identities = found as? [SecIdentity] else { return [] }
+        var seen = Set<String>()
+        return identities.compactMap { secIdentity -> Choice? in
+            guard let identity = ClientIdentity(secIdentity), seen.insert(identity.sha256Fingerprint).inserted,
+                  let certificate = SecCertificateCreateWithData(nil, identity.certificate as CFData) else { return nil }
+            return Choice(identity: identity, name: SecCertificateCopySubjectSummary(certificate) as String? ?? identity.sha256Fingerprint)
+        }
+        .sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
+    }
+
+    /// The certificate a profile names, if it is still in the keychain.
+    static func identity(_ fingerprint: String) -> ClientIdentity? {
+        guard !fingerprint.isEmpty else { return nil }
+        return all().first { TrustPolicyFingerprint.same($0.id, fingerprint) }?.identity
+    }
+}
+
+/// Fingerprints compared as the transport compares pins: hex digits only.
+enum TrustPolicyFingerprint {
+    static func same(_ a: String, _ b: String) -> Bool {
+        a.lowercased().filter(\.isHexDigit) == b.lowercased().filter(\.isHexDigit)
     }
 }
 

@@ -34,9 +34,11 @@ a month, on a Tuesday, it makes a release (docs/DISTRIBUTION.md, step 5).
   `LDAP_TEST_PYTHON=/path/to/python3`.
 - Nothing else is downloaded. The test server is the `slapd` that macOS ships in
   `/usr/libexec`, and the certificates come from the system `openssl`.
-- For the Active Directory domain controller in step 6 only: Podman
-  (`brew install podman`, then `podman machine init` and `podman machine start`).
-  It downloads Alpine Linux and Samba when it builds the image the first time.
+- For the Active Directory domain controller in step 6, and the SASL server
+  at the end of step 3, only: Podman (`brew install podman`, then
+  `podman machine init` and `podman machine start`). They download Alpine
+  Linux with Samba, or with OpenLDAP, when they build their images the first
+  time.
 
 ## 1. Unit tests
 
@@ -75,6 +77,10 @@ against a big directory (step 5, "A big directory"). The unit tests cover:
   export; a combining mark cannot hide a comma from DN escaping; a filter nested
   past 64 levels is refused rather than crashing the app; and an access list
   past 64 KB is refused rather than written wrongly.
+- **Sign-in**: SCRAM against the examples in RFC 5802 and RFC 7677, and what
+  a server's challenge may not ask for (step 3 has the details); the framing
+  of Kerberos-encrypted messages, which refuses a frame outside the agreed
+  sizes before Kerberos sees it.
 - **Access rules**: an access control entry in words (full control, read,
   extended rights, property sets, attributes and classes named, where it
   applies, inherited or not, denials), in the order AD applies them.
@@ -213,6 +219,54 @@ To run one suite:
 ```bash
 FORESTER_TEST_SERVER=1 swift test --filter WriteTests
 ```
+
+### SCRAM and certificate sign-in
+
+The test directory's TLS is a proxy in front of Apple's `slapd`, which offers
+neither SCRAM nor sign-in with a client certificate. A second server does:
+OpenLDAP with its own TLS and Cyrus SASL, in a Podman container (about 30 MB).
+
+```bash
+TestDirectory/start-sasl.sh
+```
+
+```bash
+FORESTER_TEST_SASL=1 swift test --filter SASLServerTests
+```
+
+It answers on `ldap://localhost:12389` (StartTLS) and `ldaps://localhost:12636`,
+asks every TLS client for a certificate, and binds SCRAM to the TLS
+connection (SCRAM-SHA-256-PLUS). The script makes a test CA, the server's
+certificate and two client certificates as `.p12` files in
+`TestDirectory/.run/sasl/` (password `forester`); the tests read them into
+memory, so nothing is added to a keychain. **SASLServerTests** (9) checks:
+
+- SCRAM-SHA-256 signs in over StartTLS and LDAPS, bound to the TLS
+  connection, and over plain LDAP; a password typed with accents in another
+  Unicode form signs in too; a wrong password is *invalid credentials*
+- the server refuses a sign-in bound to another certificate (someone in
+  between), and one that says the server cannot bind when it can (the -PLUS
+  mechanism hidden), though the password is right
+- the client certificate signs in over StartTLS and LDAPS as the entry the
+  server maps it to; a certificate from another issuer ends the handshake
+- without TLS, or without a certificate chosen, nothing is sent; a server
+  that never asks for a certificate (step 2's test directory, with
+  `FORESTER_TEST_SERVER=1`) and one that asks but cannot sign in with it (the
+  domain controller of step 6, with `FORESTER_TEST_AD=1`) are each named as
+  such
+
+**SCRAMTests**, among the unit tests, checks the arithmetic against the
+examples in RFC 5802 and RFC 7677, the channel-binding headers, escaped user
+names, SASLprep, and the challenges refused: fewer than 4,096 rounds (a
+recorded sign-in is then quick to guess against), a nonce that is not this
+sign-in's, a mandatory extension, an empty salt, a server error.
+
+To try it in the app, import `TestDirectory/.run/sasl/client.p12` into your
+login keychain, connect to `localhost` port 12636 (LDAPS), Sign in
+**Certificate**, and choose *Forester Client*; or Sign in **Name and password
+(SCRAM)** as `scram.user` with `Scram-Test-Password-2026!`. Trust the test
+CA's certificate when asked. Remove the certificate from the keychain
+afterwards. `TestDirectory/stop-sasl.sh` removes the server and its files.
 
 ## 4. The app against the test directory
 
@@ -638,10 +692,16 @@ FORESTER_TEST_AD=1 KRB5_CONFIG=$PWD/TestDirectory/.run/krb5.conf KRB5CCNAME=FILE
   swift test --filter KerberosTests
 ```
 
-They sign in with the ticket over StartTLS and LDAPS, are refused without
-encryption, and are refused with a channel binding for another certificate
-(Samba checks it, as a Windows domain controller with channel binding required
-does). Every seeded account has
+They sign in with the ticket over StartTLS and LDAPS, are refused with any
+certificate accepted, and are refused with a channel binding for another
+certificate (Samba checks it, as a Windows domain controller with channel
+binding required does). Over plain LDAP on 11389 they sign in with Kerberos
+encrypting every message: what crosses the network holds none of the names
+read (the 1,500 entries of *Bulk Import*, paged, arrive in many encrypted
+frames), 300 reads in flight at once and a search abandoned midway leave the
+connection working (Kerberos numbers each message, and the server refuses one
+out of order), and an account is created with a password and a photo larger
+than one frame, so the request goes out in several. Every seeded account has
 `Corp-Example-Test-Password-2026!`. Each start begins a new domain;
 `TestDirectory/stop-ad.sh` removes it.
 

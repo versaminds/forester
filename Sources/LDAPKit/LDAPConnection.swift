@@ -77,13 +77,17 @@ public actor LDAPConnection {
         /// Seconds to wait for each response, and for the connection itself.
         public var timeout: TimeInterval
         public var trust: TrustPolicy
+        /// The certificate to show a server that asks for one (SASL EXTERNAL).
+        public var clientIdentity: ClientIdentity?
 
-        public init(host: String, port: Int, security: Security, timeout: TimeInterval = 30, trust: TrustPolicy = TrustPolicy()) {
+        public init(host: String, port: Int, security: Security, timeout: TimeInterval = 30, trust: TrustPolicy = TrustPolicy(),
+                    clientIdentity: ClientIdentity? = nil) {
             self.host = host
             self.port = port
             self.security = security
             self.timeout = timeout
             self.trust = trust
+            self.clientIdentity = clientIdentity
         }
     }
 
@@ -91,15 +95,32 @@ public actor LDAPConnection {
     public static let whoAmIOID = "1.3.6.1.4.1.4203.1.11.3"
 
     public let options: Options
-    public private(set) var isSecure = false
+    /// TLS protects the connection (LDAPS, or StartTLS once it is up).
+    public private(set) var usesTLS = false
+    /// Kerberos encrypts every message: a SASL security layer is in force.
+    public var isSealed: Bool { securityLayer != nil }
+    /// What is sent and received cannot be read on the network: TLS, or
+    /// Kerberos encryption.
+    public var isSecure: Bool { usesTLS || isSealed }
     public internal(set) var boundDN: String?
 
     private var transport: LDAPTransport?
 
     /// The certificate the server presented, once TLS is up (DER).
     var serverCertificate: Data? { transport?.serverCertificate }
+    /// The server asked for a client certificate in the TLS handshake.
+    var clientCertificateRequested: Bool { transport?.clientCertificateRequested ?? false }
     private var nextMessageID = 1
+    /// Received bytes not yet decoded, after any security layer.
     private var buffer: [UInt8] = []
+    /// Received bytes of encrypted frames not yet whole.
+    private var sealedBuffer: [UInt8] = []
+    private var securityLayer: SASLSecurityLayer?
+    /// Agreed on during a bind, and in force from that bind's answer on.
+    private var armedSecurityLayer: SASLSecurityLayer?
+    /// Sees every byte as it arrives, before any security layer: lets a test
+    /// check that nothing readable crosses the network.
+    private var receivedBytesObserver: (@Sendable ([UInt8]) -> Void)?
     private var pending: [Int: PendingOperation] = [:]
     private var reading = false
     private var receivedAnything = false
@@ -131,7 +152,7 @@ public actor LDAPConnection {
     /// Opens the connection and, for StartTLS, negotiates TLS. The TCP connection
     /// itself is made lazily, so a wrong host or port surfaces on the first request.
     public func open() async throws {
-        let transport = LDAPTransport(host: options.host, port: options.port, trust: options.trust)
+        let transport = LDAPTransport(host: options.host, port: options.port, trust: options.trust, clientIdentity: options.clientIdentity)
         self.transport = transport
         transport.resume()
         switch options.security {
@@ -139,7 +160,7 @@ public actor LDAPConnection {
             break
         case .ldaps:
             transport.startTLS()
-            isSecure = true
+            usesTLS = true
         case .startTLS:
             do {
                 let responses = try await perform(LDAPCodec.extended(oid: Self.startTLSOID), name: "StartTLS")
@@ -159,7 +180,7 @@ public actor LDAPConnection {
             // The reader stops once nothing is outstanding, so no read is queued
             // that the handshake would have to wait behind.
             transport.startTLS()
-            isSecure = true
+            usesTLS = true
         }
     }
 
@@ -176,7 +197,7 @@ public actor LDAPConnection {
         if wasHealthy {
             // Unbind is a courtesy; the server cleans up either way.
             let bytes = LDAPCodec.message(id: allocateID(), op: LDAPCodec.unbind)
-            Task { try? await transport.write(bytes, timeout: 2); transport.close() }
+            transmit(bytes, via: transport, timeout: 2) { _ in transport.close() }
         } else {
             transport.close()
         }
@@ -412,7 +433,7 @@ public actor LDAPConnection {
                 operation.timeout = timeout
                 pending[id] = operation
                 arm(operation, id: id)
-                Task { await self.send(bytes, for: id, via: transport) }
+                send(bytes, for: id, via: transport)
             }
         } onCancel: {
             Task { await self.cancel(id) }
@@ -448,15 +469,50 @@ public actor LDAPConnection {
         return .seconds(operation.timeout) - (ContinuousClock.now - operation.lastHeard)
     }
 
-    private func send(_ bytes: [UInt8], for id: Int, via transport: LDAPTransport) async {
+    private func send(_ bytes: [UInt8], for id: Int, via transport: LDAPTransport) {
         guard pending[id] != nil else { return }
-        do {
-            try await transport.write(bytes, timeout: options.timeout)
-            startReading()
-        } catch {
-            fail(everything: transport.translate(error, security: options.security, timeout: options.timeout))
+        transmit(bytes, via: transport, timeout: options.timeout) { [weak self] error in
+            Task { await self?.sent(error, via: transport) }
         }
     }
+
+    private func sent(_ error: Error?, via transport: LDAPTransport) {
+        guard let error else {
+            startReading()
+            return
+        }
+        fail(everything: transport.translate(error, security: options.security, timeout: options.timeout))
+    }
+
+    /// Encrypts the message when a security layer is in force and queues it
+    /// for writing, in one step on the actor: frames then go out in the order
+    /// they were encrypted, which Kerberos checks by numbering them.
+    private func transmit(_ message: [UInt8], via transport: LDAPTransport, timeout: TimeInterval,
+                          completion: @escaping @Sendable (Error?) -> Void) {
+        do {
+            let wire = try securityLayer?.seal(message) ?? message
+            transport.enqueueWrite(wire, timeout: timeout, completion: completion)
+        } catch {
+            completion(error)
+        }
+    }
+
+    /// Called from a bind once the server's offer is accepted; the layer takes
+    /// effect when that bind's answer arrives (`dispatch`).
+    func armSecurityLayer(_ layer: SASLSecurityLayer) {
+        armedSecurityLayer = layer
+    }
+
+    func disarmSecurityLayer() {
+        armedSecurityLayer = nil
+    }
+
+    func observeReceivedBytes(_ observer: @escaping @Sendable ([UInt8]) -> Void) {
+        receivedBytesObserver = observer
+    }
+
+    /// The most plain bytes one encrypted frame carries, with a layer in force.
+    var sealedFrameLimit: Int? { securityLayer?.sendLimit }
 
     private func startReading() {
         guard !reading, !pending.isEmpty, let transport else { return }
@@ -494,16 +550,34 @@ public actor LDAPConnection {
     }
 
     private func ingest(_ data: Data) throws {
-        buffer.append(contentsOf: data)
+        receivedBytesObserver?([UInt8](data))
+        if let securityLayer {
+            sealedBuffer.append(contentsOf: data)
+            buffer += try securityLayer.unseal(&sealedBuffer)
+        } else {
+            buffer.append(contentsOf: data)
+        }
         var offset = 0
         while let (element, next) = try BERDecoder.element(in: buffer, at: offset) {
             offset = next
+            let wasSealed = securityLayer != nil
             dispatch(try LDAPCodec.decodeResponse(element))
+            if !wasSealed, let securityLayer {
+                // That was the bind that agreed on the layer, the last message
+                // in the clear: whatever came after it is encrypted.
+                sealedBuffer = Array(buffer[offset...])
+                buffer = try securityLayer.unseal(&sealedBuffer)
+                offset = 0
+            }
         }
         if offset > 0 { buffer.removeSubrange(0..<offset) }
     }
 
     private func dispatch(_ response: LDAPResponse) {
+        if let armed = armedSecurityLayer, case .bind(let result, _) = response.kind, pending[response.messageID] != nil {
+            armedSecurityLayer = nil
+            if result.code == .success { securityLayer = armed }
+        }
         if response.messageID == 0 {
             // Unsolicited notification; the only one defined is the notice of
             // disconnection (RFC 4511 §4.4.1), after which the server hangs up.
@@ -559,7 +633,7 @@ public actor LDAPConnection {
     private func abandon(_ id: Int) {
         guard let transport, failure == nil else { return }
         let bytes = LDAPCodec.message(id: allocateID(), op: LDAPCodec.abandon(id))
-        Task { try? await transport.write(bytes, timeout: 5) }
+        transmit(bytes, via: transport, timeout: 5) { _ in }
     }
 
     /// Marks the connection dead and fails everything waiting on it.

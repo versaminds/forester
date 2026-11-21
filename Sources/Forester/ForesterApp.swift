@@ -227,16 +227,16 @@ final class AppModel {
 
     func save(_ profile: ConnectionProfile, password: String?) {
         store.save(profile)
-        if profile.authentication == .simple, let password, !password.isEmpty {
+        if profile.authentication.usesPassword, let password, !password.isEmpty {
             if profile.savePassword { Keychain.setPassword(password, for: profile) }
         }
-        if !profile.savePassword || profile.authentication != .simple {
+        if !profile.savePassword || !profile.authentication.usesPassword {
             Keychain.deletePassword(for: profile.id)
         }
         if let session = sessions[profile.id] {
             session.update(profile)
             if let password, !password.isEmpty { session.usePassword(password) }
-        } else if profile.authentication == .simple, let password, !password.isEmpty, !profile.savePassword {
+        } else if profile.authentication.usesPassword, let password, !password.isEmpty, !profile.savePassword {
             // A password typed into a new connection is used until the app
             // quits even when it is not remembered, rather than asked again.
             session(for: profile.id)?.usePassword(password)

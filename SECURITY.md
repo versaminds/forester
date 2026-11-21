@@ -34,8 +34,15 @@ without the user meaning to. For example:
   catalog (ports 3268 and 3269), to its other domain controllers when you ask
   for an account's status on each, and to another domain of the forest you
   open from it
-- a Kerberos sign-in without TLS, or one whose ticket could be relayed to
-  another connection (the TLS channel binding)
+- a Kerberos sign-in whose ticket could be relayed to another connection (the
+  TLS channel binding), or, without TLS, a message sent or taken on that
+  connection without Kerberos encryption
+- a SCRAM sign-in kept without the server's proof that it knows the
+  password, with fewer than 4,096 rounds of hashing, or not bound to the TLS
+  connection when the server offers that; or a password saved for SCRAM
+  sent in a simple bind
+- a client certificate shown to a server other than the one it was chosen
+  for, or a certificate sign-in that goes on as something else when it fails
 - an update installed that is not signed with VersaMinds' update key, or the
   update feed read before you chose to check for updates
 

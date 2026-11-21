@@ -157,10 +157,15 @@ name), a monitor for OpenLDAP's `cn=Monitor` and 389 Directory Server's
 
 **Connections.** No directory yet? **Try a Sample Directory** (in the empty
 window, or the Help menu) opens a public, read-only test directory that Forum
-Systems runs, without signing in. Sign in with a name and password, anonymously, or with
-**Kerberos**: the ticket the Mac already has (Ticket Viewer, kinit, single
-sign-on), over StartTLS or LDAPS with the TLS channel bound into the exchange,
-so no password is typed or kept. Saved with keychain passwords, imported and exported as
+Systems runs, without signing in. Sign in with a name and password (a simple
+bind, or **SCRAM-SHA-256**, which proves the password without sending it and
+binds the TLS channel when the server can check that), anonymously, with a
+**certificate** from the keychain (SASL EXTERNAL: the TLS client certificate
+is the sign-in), or with **Kerberos**: the ticket the Mac already has (Ticket
+Viewer, kinit, single sign-on), so no password is typed or kept. Kerberos goes
+over StartTLS or LDAPS with the TLS channel bound into the exchange, or over
+plain LDAP with Kerberos encrypting every message itself; a server that will
+not encrypt is refused, never used unprotected. Saved with keychain passwords, imported and exported as
 `.forester` files (passwords never included), and optionally kept in
 iCloud Drive so they appear on your other Macs. Connections saved
 by the app under its earlier name, LDAP Explorer, are picked up on first launch;
@@ -195,8 +200,6 @@ these differences:
 
 ## Not yet
 
-- SASL mechanisms other than Kerberos (GSSAPI), and Kerberos over plain LDAP
-  (it needs StartTLS or LDAPS).
 - Browsing another domain's tree from the same window: each domain opens as a
   connection of its own.
 - Editing permissions (security descriptors) beyond "user cannot change
@@ -231,7 +234,9 @@ server; starting it again restores every entry.
 
 `TestDirectory/start-ad.sh` starts a real Active Directory domain controller
 (Samba, in a Podman container) with the same directory, and the app runs every
-change it makes to AD against it; TESTING.md step 6.
+change it makes to AD against it; TESTING.md step 6. `TestDirectory/start-sasl.sh`
+starts OpenLDAP with its own TLS and SASL in another container, for the
+certificate and SCRAM sign-ins; TESTING.md step 3.
 
 A debug build can also drive itself: through every screen, every sheet in light
 and dark mode, and a session of real clicks and typing that checks each change
@@ -293,7 +298,9 @@ Sources/LDAPKit/        the LDAP client
   LDIF.swift, LDIFParser.swift   LDIF out and in, change records included
   SecurityDescriptor.swift       Windows security descriptors (cannot change password)
   AccessRules.swift     access rules in words, and what an account may do
-  Kerberos.swift        Kerberos sign-in with the TLS channel binding
+  Kerberos.swift        Kerberos sign-in: the TLS channel binding, or Kerberos
+                        encryption of every message without TLS
+  SASL.swift            certificate (EXTERNAL) and SCRAM-SHA-256 sign-in
   ADValues.swift, ADMetadata.swift, AttributeFormatter.swift, DN.swift,
   LDAPError.swift, ServerInfo.swift
 Sources/Forester/       the app (SwiftUI, with an NSOutlineView for the tree)
@@ -303,7 +310,8 @@ Sources/Forester/       the app (SwiftUI, with an NSOutlineView for the tree)
   Views/Tools/          LDIF import, AD tools, server monitor, schema browser
   Support/              About, updates, export, and the self-driving checks
 Tests/LDAPKitTests/     unit tests and live-server integration tests
-TestDirectory/          the local test server, the Samba domain controller and a sample LDIF
+TestDirectory/          the local test server, the Samba domain controller, OpenLDAP
+                        with SASL, and a sample LDIF
 demo-server/            a directory of our own for App Review, should it ask for one
 scripts/                app bundle, disk image, App Store package, icon, website images, checks
 site/                   the website, forester.versaminds.live (Cloudflare Pages, wrangler.toml)

@@ -28,6 +28,30 @@ public struct TrustPolicy: Sendable, Hashable, Codable {
     }
 }
 
+/// A certificate with its private key (an identity from the keychain), shown
+/// to a server that asks for one in the TLS handshake: what SASL EXTERNAL
+/// signs in with.
+public struct ClientIdentity: @unchecked Sendable, Hashable {
+    public let identity: SecIdentity
+    /// The certificate, DER.
+    public let certificate: Data
+
+    public init?(_ identity: SecIdentity) {
+        var certificate: SecCertificate?
+        guard SecIdentityCopyCertificate(identity, &certificate) == errSecSuccess, let certificate else { return nil }
+        self.identity = identity
+        self.certificate = SecCertificateCopyData(certificate) as Data
+    }
+
+    /// The certificate's SHA-256, as the app shows and keeps it.
+    public var sha256Fingerprint: String {
+        SHA256.hash(data: certificate).map { String(format: "%02X", $0) }.joined(separator: ":")
+    }
+
+    public static func == (a: ClientIdentity, b: ClientIdentity) -> Bool { a.certificate == b.certificate }
+    public func hash(into hasher: inout Hasher) { hasher.combine(certificate) }
+}
+
 /// A TCP stream to the server, with TLS that can start on the first byte
 /// (LDAPS) or later in the conversation (StartTLS).
 ///
@@ -40,16 +64,19 @@ final class LDAPTransport: NSObject, URLSessionStreamDelegate, @unchecked Sendab
     private let host: String
     private let port: Int
     private let trust: TrustPolicy
+    private let clientIdentity: ClientIdentity?
     private var session: URLSession!
     private var task: URLSessionStreamTask!
     private let lock = NSLock()
     private var _trustFailure: CertificateTrustFailure?
     private var _serverCertificate: Data?
+    private var _clientCertificateRequested = false
 
-    init(host: String, port: Int, trust: TrustPolicy) {
+    init(host: String, port: Int, trust: TrustPolicy, clientIdentity: ClientIdentity? = nil) {
         self.host = host
         self.port = port
         self.trust = trust
+        self.clientIdentity = clientIdentity
         super.init()
         let configuration = URLSessionConfiguration.ephemeral
         // Directory traffic goes straight to the server; an HTTP or SOCKS proxy
@@ -74,6 +101,12 @@ final class LDAPTransport: NSObject, URLSessionStreamDelegate, @unchecked Sendab
         return _trustFailure
     }
 
+    /// The server asked for a client certificate in the TLS handshake.
+    var clientCertificateRequested: Bool {
+        lock.lock(); defer { lock.unlock() }
+        return _clientCertificateRequested
+    }
+
     func resume() {
         task.resume()
     }
@@ -84,8 +117,10 @@ final class LDAPTransport: NSObject, URLSessionStreamDelegate, @unchecked Sendab
         task.startSecureConnection()
     }
 
-    func write(_ bytes: [UInt8], timeout: TimeInterval) async throws {
-        try await task.write(Data(bytes), timeout: timeout)
+    /// Queues bytes behind everything queued before them; the stream writes
+    /// them in that order and then calls back.
+    func enqueueWrite(_ bytes: [UInt8], timeout: TimeInterval, completion: @escaping @Sendable (Error?) -> Void) {
+        task.write(Data(bytes), timeout: timeout, completionHandler: completion)
     }
 
     /// Waits for at least one byte. A timeout of 0 waits indefinitely.
@@ -113,9 +148,19 @@ final class LDAPTransport: NSObject, URLSessionStreamDelegate, @unchecked Sendab
 
     private func evaluate(_ challenge: URLAuthenticationChallenge,
                           _ completion: @escaping (URLSession.AuthChallengeDisposition, URLCredential?) -> Void) {
+        if challenge.protectionSpace.authenticationMethod == NSURLAuthenticationMethodClientCertificate {
+            lock.withLock { _clientCertificateRequested = true }
+            // Only the certificate chosen for this connection; without one,
+            // the server decides whether to go on without.
+            guard let clientIdentity else {
+                completion(.performDefaultHandling, nil)
+                return
+            }
+            completion(.useCredential, URLCredential(identity: clientIdentity.identity, certificates: nil, persistence: .none))
+            return
+        }
         guard challenge.protectionSpace.authenticationMethod == NSURLAuthenticationMethodServerTrust,
               let serverTrust = challenge.protectionSpace.serverTrust else {
-            // Client certificates are not supported; let the server decide.
             completion(.performDefaultHandling, nil)
             return
         }

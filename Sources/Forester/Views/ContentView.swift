@@ -221,7 +221,7 @@ struct StatusBar: View {
             Image(systemName: session.isSecure ? "lock.fill" : "lock.open")
                 .foregroundStyle(session.isSecure && !unchecked ? Color.green : Color.orange)
                 .help(session.isSecure ? (unchecked ? "The connection is encrypted, but the server's certificate is not checked: anyone on the network path could be in between."
-                                                    : "The connection is encrypted with TLS.") : "The connection is not encrypted.")
+                                                    : (session.isSealed ? "The connection is encrypted by Kerberos." : "The connection is encrypted with TLS.")) : "The connection is not encrypted.")
             // Shortened from the end: the server, host and encryption come
             // first and stay readable, and the whole line is in the tooltip.
             Text(session.statusLine)
@@ -266,7 +266,7 @@ struct ConnectView: View {
                 Text(session.profile.displayName).font(.title2.weight(.semibold))
                 Text(session.profile.endpoint).font(.callout.monospaced()).foregroundStyle(.secondary)
                     .textSelection(.enabled)
-                Text(session.profile.authentication == .simple ? session.profile.bindName : session.profile.authentication.label)
+                Text(session.profile.authentication.usesPassword ? session.profile.bindName : session.profile.authentication.label)
                     .font(.callout).foregroundStyle(.secondary)
             }
             if case .failed(let message) = session.phase {
@@ -280,10 +280,9 @@ struct ConnectView: View {
                 .padding(10)
                 .background(.orange.opacity(0.08), in: RoundedRectangle(cornerRadius: 8))
             }
-            if session.profile.security == .none || session.profile.trust.trustAnyCertificate {
-                Text(session.profile.security == .none
-                     ? "This connection is not encrypted; the password and everything read travel in clear text."
-                     : "This connection accepts any certificate, so it cannot tell the real server from someone in between.")
+            if let note = session.profile.plainConnectionNote ?? (session.profile.trust.trustAnyCertificate
+                ? "This connection accepts any certificate, so it cannot tell the real server from someone in between." : nil) {
+                Text(note)
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)

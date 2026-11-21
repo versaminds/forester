@@ -28,6 +28,8 @@ final class DirectorySession: Identifiable {
     private(set) var server: ServerInfo?
     private(set) var identity: String?
     private(set) var isSecure = false
+    /// Encrypted by Kerberos rather than TLS (a connection without TLS).
+    private(set) var isSealed = false
     /// `S-1-5-21-…` of the domain, read from the domain object, for resolving
     /// primary groups (stored as a bare RID).
     private(set) var domainSID: String?
@@ -165,7 +167,7 @@ final class DirectorySession: Identifiable {
         case .failed(let message): return message
         case .connected:
             var parts = [server?.kind.label ?? "LDAP", profile.host]
-            parts.append(isSecure ? (profile.trust.trustAnyCertificate ? "TLS, certificate not checked" : "TLS") : "unencrypted")
+            parts.append(isSealed ? "Kerberos encryption" : (isSecure ? (profile.trust.trustAnyCertificate ? "TLS, certificate not checked" : "TLS") : "unencrypted"))
             if let identity { parts.append(identity == "anonymous" ? "anonymous" : identity.replacingOccurrences(of: "dn:", with: "")) }
             return parts.joined(separator: " · ")
         }
@@ -205,6 +207,7 @@ final class DirectorySession: Identifiable {
         server = nil
         identity = nil
         isSecure = false
+        isSealed = false
         schema = nil
         domainLooksLikeAD = false
         domainSID = nil
@@ -253,7 +256,8 @@ final class DirectorySession: Identifiable {
     /// connection that accepts any certificate asks for it, as the keychain
     /// keeps a password apart for such a connection.
     func lendPassword(to other: DirectorySession) {
-        guard let password, other.profile.authentication == .simple, other.profile.security != .none,
+        guard let password, profile.authentication.usesPassword, other.profile.authentication == profile.authentication,
+              other.profile.security != .none,
               !other.profile.trust.trustAnyCertificate,
               other.profile.bindName.caseInsensitiveCompare(profile.bindName) == .orderedSame else { return }
         other.usePassword(password)
@@ -291,7 +295,7 @@ final class DirectorySession: Identifiable {
     }
 
     private func performConnect(_ supplied: String?) async {
-        if profile.authentication == .simple {
+        if profile.authentication.usesPassword {
             if let supplied {
                 password = supplied
             } else if password == nil, profile.savePassword {
@@ -327,8 +331,9 @@ final class DirectorySession: Identifiable {
             guard current() else { await fresh.close(); return }
             let info = ServerInfo(rootDSE: root)
             let secure = await fresh.isSecure
+            let sealed = await fresh.isSealed
             var who = try? await fresh.whoAmI()
-            if profile.authentication == .simple, who == nil || who == "anonymous" {
+            if profile.authentication.usesPassword, who == nil || who == "anonymous" {
                 who = profile.bindName
             }
             var sid: String?
@@ -342,6 +347,7 @@ final class DirectorySession: Identifiable {
             connection = fresh
             server = info
             isSecure = secure
+            isSealed = sealed
             identity = who
             domainSID = sid
             domainLooksLikeAD = looksLikeAD
@@ -375,7 +381,7 @@ final class DirectorySession: Identifiable {
         } catch let error as LDAPError where error.resultCode == .invalidCredentials {
             password = nil
             phase = .failed(error.localizedDescription)
-            if profile.authentication == .simple {
+            if profile.authentication.usesPassword {
                 passwordRequest = PasswordRequest(message: error.localizedDescription)
             }
         } catch {
@@ -388,13 +394,29 @@ final class DirectorySession: Identifiable {
     private func signIn(_ connection: LDAPConnection) async throws {
         switch profile.authentication {
         case .simple: try await connection.bind(dn: profile.bindName, password: password ?? "")
+        case .scram: try await connection.bindSCRAM(user: profile.bindName, password: password ?? "")
         case .kerberos: try await connection.bindKerberos()
+        case .certificate: try await connection.bindExternal()
         case .anonymous: break
         }
     }
 
+    /// The keychain certificate the profile signs in with, looked up anew
+    /// for every connection: it may have been removed or renewed meanwhile.
+    private func withClientIdentity(_ options: LDAPConnection.Options) throws -> LDAPConnection.Options {
+        guard profile.authentication == .certificate else { return options }
+        guard let identity = ClientCertificates.identity(profile.clientCertificate) else {
+            throw LDAPError.signIn(profile.clientCertificate.isEmpty
+                ? "Choose the certificate to sign in with: Edit the connection."
+                : "The certificate this connection signs in with is no longer in the keychain. Edit the connection to choose another.")
+        }
+        var options = options
+        options.clientIdentity = identity
+        return options
+    }
+
     private func openConnection() async throws -> LDAPConnection {
-        var options = profile.options
+        var options = try withClientIdentity(profile.options)
         options.trust.pinnedFingerprints += trustedOnce
         let fresh = LDAPConnection(options)
         do {
@@ -411,13 +433,15 @@ final class DirectorySession: Identifiable {
     /// with this profile's credentials. The caller closes it.
     ///
     /// The host comes from directory data, so the password goes there only
-    /// encrypted, and only to a server whose certificate this Mac trusts: the
+    /// over TLS, and only to a server whose certificate this Mac trusts: the
     /// certificates trusted for this profile's own server are not carried over.
+    /// SCRAM does not send the password, but an exchange recorded on a plain
+    /// connection is still something to guess it against.
     func openConnection(to host: String, port: Int? = nil, timeout: TimeInterval) async throws -> LDAPConnection {
-        guard profile.security != .none || profile.authentication != .simple else {
-            throw LDAPError.connectionFailed("Not contacted: this connection is not encrypted, so signing in there would send the password in clear text.")
+        guard profile.security != .none || !profile.authentication.usesPassword else {
+            throw LDAPError.connectionFailed("Not contacted: this connection does not use TLS, so signing in there would expose the password.")
         }
-        var options = profile.options
+        var options = try withClientIdentity(profile.options)
         options.host = host
         if let port { options.port = port }
         options.timeout = timeout

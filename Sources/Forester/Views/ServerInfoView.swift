@@ -56,7 +56,7 @@ struct ServerInfoContent: View {
             }
             group("This connection") {
                 row("Endpoint", session.profile.endpoint)
-                row("Encryption", session.isSecure ? "TLS (\(session.profile.security.label))" : "None")
+                row("Encryption", session.isSealed ? "Kerberos (SASL security layer)" : (session.isSecure ? "TLS (\(session.profile.security.label))" : "None"))
                 row("Bound as", session.identity.map { $0.replacingOccurrences(of: "dn:", with: "").replacingOccurrences(of: "u:", with: "") })
                 row("Paged results", server.supportsPaging ? "Supported" : "Not supported")
                 row("StartTLS", server.supportsStartTLS ? "Supported" : "Not advertised")

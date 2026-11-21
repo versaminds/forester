@@ -34,10 +34,17 @@ struct ProfileEditor: View {
 
     private var hostIsEmpty: Bool { draft.host.trimmingCharacters(in: .whitespaces).isEmpty }
     private var portIsValid: Bool { ConnectionProfile.portRange.contains(draft.port) }
-    /// Kerberos is used only over TLS (see `LDAPConnection.bindKerberos`).
-    private var kerberosWithoutTLS: Bool { draft.authentication == .kerberos && draft.security == .none }
-    /// Nor with any certificate accepted (see `LDAPConnection.bindKerberos`).
-    private var kerberosWithAnyCertificate: Bool { draft.authentication == .kerberos && draft.trust.trustAnyCertificate }
+    /// Kerberos over TLS binds the ticket to the server's certificate, which
+    /// means nothing with any certificate accepted (see `LDAPConnection.bindKerberos`).
+    private var kerberosWithAnyCertificate: Bool {
+        draft.authentication == .kerberos && draft.security != .none && draft.trust.trustAnyCertificate
+    }
+    /// A certificate is shown in the TLS handshake, so it needs TLS, and one chosen.
+    private var certificateIncomplete: Bool {
+        draft.authentication == .certificate && (draft.security == .none || draft.clientCertificate.isEmpty)
+    }
+    /// The keychain's certificates with a private key, read when the sheet opens.
+    @State private var certificates: [ClientCertificates.Choice] = []
 
     /// The saved password was saved for other server, user or security
     /// settings than these, so it is not used with them (see `Keychain`).
@@ -95,9 +102,15 @@ struct ProfileEditor: View {
                 dismiss()
             }
             .keyboardShortcut(.defaultAction)
-            .disabled(hostIsEmpty || !portIsValid || kerberosWithoutTLS || kerberosWithAnyCertificate)
+            .disabled(hostIsEmpty || !portIsValid || kerberosWithAnyCertificate || certificateIncomplete)
         }
-        .onAppear { hasSavedPassword = !isNew && Keychain.hasPassword(for: draft.id) }
+        .onAppear {
+            hasSavedPassword = !isNew && Keychain.hasPassword(for: draft.id)
+            if draft.authentication == .certificate { certificates = ClientCertificates.all() }
+        }
+        .onChange(of: draft.authentication) { _, new in
+            if new == .certificate, certificates.isEmpty { certificates = ClientCertificates.all() }
+        }
     }
 
     private var form: some View {
@@ -134,18 +147,25 @@ struct ProfileEditor: View {
                 PickerRow(label: "Sign in", selection: $draft.authentication) {
                     ForEach(ConnectionProfile.Authentication.allCases, id: \.self) { Text($0.label).tag($0) }
                 }
-                if draft.authentication == .simple {
-                    TextFieldRow(label: "User", text: $draft.bindName, prompt: "user@corp.example, CORP\\user or a DN")
+                if draft.authentication.usesPassword {
+                    TextFieldRow(label: "User", text: $draft.bindName,
+                                 prompt: draft.authentication == .scram ? "The user name the server knows" : "user@corp.example, CORP\\user or a DN")
                     PasswordFieldRow(label: "Password", text: $password,
                                      prompt: savedPasswordDoesNotApply ? "Enter it again for these settings"
                                          : (hasSavedPassword ? "Saved in the keychain" : "Asked when you connect"),
                                      reveal: $revealPassword)
                     Toggle("Remember the password in the keychain", isOn: $draft.savePassword)
                         .formSwitch("Remember the password in the keychain")
+                    if draft.authentication == .scram {
+                        FormFooter("SCRAM-SHA-256: the password proves itself without being sent, and the server proves it knows it too. Over TLS the sign-in is bound to the connection when the server can check that. The server must offer SCRAM-SHA-256; Active Directory does not.")
+                    }
                 } else if draft.authentication == .kerberos {
-                    FormFooter(draft.security == .none
-                               ? "Kerberos sign-in needs StartTLS or LDAPS."
-                               : "Signs in with the Kerberos ticket this Mac already has, from Ticket Viewer, kinit or your organisation's single sign-on. No password is typed or kept. Use the domain controller's full DNS name as the host.")
+                    FormFooter("Signs in with the Kerberos ticket this Mac already has, from Ticket Viewer, kinit or your organisation's single sign-on. No password is typed or kept. Use the domain controller's full DNS name as the host."
+                               + (draft.security == .none
+                                  ? " Without StartTLS or LDAPS, Kerberos encrypts the connection itself; a server that does not agree to that is not used."
+                                  : ""))
+                } else if draft.authentication == .certificate {
+                    certificatePicker
                 }
             }
             Section {
@@ -190,8 +210,32 @@ struct ProfileEditor: View {
         .formLabelWidth(84)
     }
 
+    /// A certificate with its private key from the keychain, shown to the
+    /// server in the TLS handshake (SASL EXTERNAL).
+    @ViewBuilder
+    private var certificatePicker: some View {
+        let chosenIsMissing = !draft.clientCertificate.isEmpty
+            && !certificates.contains { TrustPolicyFingerprint.same($0.id, draft.clientCertificate) }
+        PickerRow(label: "Certificate", selection: Binding(
+            get: { certificates.first { TrustPolicyFingerprint.same($0.id, draft.clientCertificate) }?.id ?? draft.clientCertificate },
+            set: { draft.clientCertificate = $0 })) {
+            if draft.clientCertificate.isEmpty { Text("Choose…").tag("") }
+            if chosenIsMissing { Text("Not in the keychain").tag(draft.clientCertificate) }
+            ForEach(certificates) { choice in
+                Text(choice.name).tag(choice.id).help("SHA-256 \(choice.id)")
+            }
+        }
+        if draft.security == .none {
+            FormFooter("A certificate is shown in the TLS handshake: choose StartTLS or LDAPS.")
+        } else if certificates.isEmpty {
+            FormFooter("The keychain holds no certificate with its private key. Import yours (a .p12 file) into Keychain Access, then open this again.")
+        } else {
+            FormFooter("Signs in as the account the server maps this certificate to (SASL EXTERNAL). No password is typed or kept. macOS asks before Forester first uses the certificate's key.")
+        }
+    }
+
     private var anyCertificateNote: String {
-        if draft.authentication != .kerberos { return "Only for a lab: anyone on the network path could read the password." }
+        if draft.authentication != .kerberos || draft.security == .none { return "Only for a lab: anyone on the network path could read the password." }
         return draft.trust.trustAnyCertificate
             ? "Turn this off to sign in with Kerberos: a ticket must be bound to a certificate this Mac trusts."
             : "Not with Kerberos: a ticket must be bound to a certificate this Mac trusts."
@@ -243,23 +287,30 @@ struct ProfileEditor: View {
         let typed = password
         // Never sent to settings it was not saved for.
         let saved = typed.isEmpty && !savedPasswordDoesNotApply && hasSavedPassword ? Keychain.password(for: original).password : nil
+        var options = profile.options
+        if profile.authentication == .certificate {
+            options.clientIdentity = certificates.first { TrustPolicyFingerprint.same($0.id, profile.clientCertificate) }?.identity
+        }
         testTask = Task {
-            let connection = LDAPConnection(profile.options)
+            let connection = LDAPConnection(options)
             defer { Task { await connection.close() } }
             do {
                 try await connection.open()
+                let typedOrSaved = typed.isEmpty ? (saved ?? "") : typed
                 switch profile.authentication {
-                case .simple: try await connection.bind(dn: profile.bindName, password: typed.isEmpty ? (saved ?? "") : typed)
+                case .simple: try await connection.bind(dn: profile.bindName, password: typedOrSaved)
+                case .scram: try await connection.bindSCRAM(user: profile.bindName, password: typedOrSaved)
                 case .kerberos: try await connection.bindKerberos()
+                case .certificate: try await connection.bindExternal()
                 case .anonymous: break
                 }
                 let info = ServerInfo(rootDSE: try await connection.rootDSE())
                 let who = try? await connection.whoAmI()
-                let secure = await connection.isSecure
+                let (secure, sealed) = (await connection.isSecure, await connection.isSealed)
                 guard !Task.isCancelled else { return }
                 var text = "Connected to \(info.kind.label)"
                 if let host = info.dnsHostName { text += " (\(host))" }
-                text += secure ? " over TLS" : ", unencrypted"
+                text += sealed ? ", encrypted by Kerberos" : (secure ? " over TLS" : ", unencrypted")
                 if let who, who != "anonymous" { text += ", bound as \(who.replacingOccurrences(of: "dn:", with: ""))" }
                 if let context = info.defaultNamingContext { text += ". Default naming context \(context)." }
                 testState = .success(text)

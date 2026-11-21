@@ -451,13 +451,13 @@ struct AccountStatusSheet: View {
         // The password goes to each of these, so only to names the directory
         // gives inside its own domain.
         let domain = DN.dnsDomain(base)?.lowercased()
-        let encrypted = session.profile.security != .none || session.profile.authentication != .simple
+        let encrypted = session.profile.security != .none || !session.profile.authentication.usesPassword
         rows = [Row(server: "\(connected) (connected)")] + controllers.compactMap { dc in
             let host = (dc.string("dNSHostName") ?? "").trimmingCharacters(in: .whitespaces)
             if host.caseInsensitiveCompare(connected) == .orderedSame { return nil }
             if !encrypted {
                 return Row(server: host.isEmpty ? DN.rdnValue(dc.dn) : host,
-                           state: "This connection is not encrypted, so signing in there would send the password in clear text.",
+                           state: "This connection does not use TLS, so signing in there would expose the password.",
                            failed: true, skipped: true)
             }
             if host.isEmpty {

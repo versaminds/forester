@@ -27,7 +27,7 @@ enum Diagnostics {
         case .idle: lines.append("State: not connected")
         case .connecting: lines.append("State: connecting")
         case .failed: lines.append("State: failed (see the errors below)")
-        case .connected: lines.append("State: connected, \(session.isSecure ? "encrypted" : "not encrypted")")
+        case .connected: lines.append("State: connected, \(session.isSealed ? "encrypted by Kerberos" : (session.isSecure ? "encrypted" : "not encrypted"))")
         }
         if let server = session.server {
             var facts = ["Server: \(server.kind.label)"]

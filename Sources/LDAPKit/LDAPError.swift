@@ -32,6 +32,8 @@ public enum LDAPError: Error, LocalizedError, Equatable {
     case emptyPassword
     case serverDisconnected(String)
     case kerberos(String)
+    /// A SASL sign-in (certificate or SCRAM) that could not be made, and why.
+    case signIn(String)
 
     public var errorDescription: String? {
         switch self {
@@ -70,7 +72,7 @@ public enum LDAPError: Error, LocalizedError, Equatable {
             return "Enter a password. A simple bind with a name and no password is an unauthenticated bind, which most servers accept as anonymous."
         case .serverDisconnected(let why):
             return "The server ended the session: \(why)"
-        case .kerberos(let why):
+        case .kerberos(let why), .signIn(let why):
             return why
         }
     }

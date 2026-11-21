@@ -1,0 +1,10 @@
+# SPDX-License-Identifier: LicenseRef-PolyForm-Shield-1.0.0
+# Copyright © 2026 VersaMinds
+# OpenLDAP with its own TLS and Cyrus SASL, for the sign-ins Apple's slapd in
+# start.sh cannot test: a TLS client certificate (SASL EXTERNAL) and
+# SCRAM-SHA-256, with and without the TLS channel bound. See ../start-sasl.sh.
+FROM docker.io/library/alpine:3.24
+RUN apk add --no-cache openldap openldap-back-mdb openldap-clients cyrus-sasl cyrus-sasl-scram
+COPY entrypoint.sh /usr/local/bin/entrypoint.sh
+EXPOSE 389 636
+ENTRYPOINT ["/bin/sh", "/usr/local/bin/entrypoint.sh"]
