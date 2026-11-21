@@ -98,7 +98,7 @@ import Testing
         #expect(LDAPTransport.configuration().tlsMinimumSupportedProtocolVersion == .TLSv12)
         #expect(LDAPTransport.configuration().connectionProxyDictionary?.isEmpty == true)
         let (disposition, credential) = LDAPTransport.clientCertificateDisposition(nil)
-        #expect(disposition == .rejectProtectionSpace && credential == nil)
+        #expect(disposition == .useCredential && credential == nil)
     }
 
     /// Against servers that speak one TLS version each (TESTING.md shows

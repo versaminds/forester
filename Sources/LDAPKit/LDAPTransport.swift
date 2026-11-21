@@ -100,11 +100,13 @@ final class LDAPTransport: NSObject, URLSessionStreamDelegate, @unchecked Sendab
 
     /// The answer to a server asking for a client certificate. Only the
     /// certificate chosen for this connection is shown. Without one, the
-    /// handshake goes on without a certificate, and the server decides
-    /// whether that will do; the system's default handling could instead
-    /// pick one from the keychain (an identity preference for the host).
+    /// handshake goes on without a certificate (no credential), and the
+    /// server decides whether that will do; the system's default handling
+    /// could instead pick one from the keychain (an identity preference for
+    /// the host). Rejecting the protection space is not that: a stream task
+    /// then closes the connection, also to a server that only asks.
     static func clientCertificateDisposition(_ identity: ClientIdentity?) -> (URLSession.AuthChallengeDisposition, URLCredential?) {
-        guard let identity else { return (.rejectProtectionSpace, nil) }
+        guard let identity else { return (.useCredential, nil) }
         return (.useCredential, URLCredential(identity: identity.identity, certificates: nil, persistence: .none))
     }
 
